@@ -11,53 +11,104 @@ import threading
 
 import ntcore
 from wpiutil import wpistruct
-from wpimath.geometry import Pose3d, Translation3d, Rotation3d, Quaternion
+from wpimath.geometry import Pose3d, Rotation3d, Quaternion
 
-import depthai
+from pipelines.pipeline import Pipeline
+from pipelines.basalt import Basalt
 
-# Create pipeline
-with depthai.Pipeline() as p:
-    fps = 120
-    width = 640
-    height = 480
+global spectacular_thread
+global nt_listener_handles
 
-    depthai.CameraModel
+global status_publisher
+global pose_publisher
+global stop_event
 
-    # Define sources and output nodes
-    left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
-    right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C, sensorFps=fps)
-    imu = p.create(depthai.node.IMU)
-    odometry = p.create(depthai.node.BasaltVIO)
+NAME = "PurpleRanger"
 
-    imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_CALIBRATED], 200)
-    imu.setBatchReportThreshold(1)
-    imu.setMaxBatchReports(10)
+epilog = """
+Modes:
+test: Run a NT4 server for debugging
+sim: Connect to simulation NT4 server
+robot: Connect to robot NT4 server
 
-    # Link nodes
-    left.requestOutput((width, height)).link(odometry.left)
-    right.requestOutput((width, height)).link(odometry.right)
-    imu.out.link(odometry.imu)
+Pipeline type:
+vio: Visual Inertial Odometry pipeline
+inference: AI inference pipeline
+"""
 
-    # Create output queue
-    output = odometry.transform.createOutputQueue()
+pipeline = Pipeline()
 
-    # Run pipeline
-    p.start()
-    while p.isRunning():
-        if not output.has():
-            time.sleep(0.01)
-            continue
+def signal_handler(sig, frame):
+    logging.info("Exiting...")
+    pipeline.stop()
+    sys.exit(0)
 
-        transform_message = output.get()
-        temp_point = transform_message.getTranslation()
-        temp_quaternion = transform_message.getQuaternion()
+# Main function
+if __name__ ==  "__main__":
+    # Bind SIGINT handler
+    signal.signal(signal.SIGINT, signal_handler)
 
-        pose = Pose3d(
-            Translation3d(temp_point.x, temp_point.y, temp_point.z),
-            Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
-        )
+    # Init argparse
+    parser = argparse.ArgumentParser(
+        prog="PurpleRanger",
+        description="Publish pose data from DepthAI Basalt VIO",
+        epilog=epilog,
+        formatter_class=argparse.RawTextHelpFormatter
+    )
 
-        print(str(pose))
+    # Add arguments
+    parser.add_argument("--mode", required=True, choices=["test", "sim", "robot"], help="select script mode")
+    parser.add_argument("--pipeline", required=True, choices=["vio", "inference"], help="pipeline type")
+    parser.add_argument("--tag-map", help="path to AprilTag map JSON file")
+    parser.add_argument("--verbose", action="store_true")
 
-        time.sleep(0.01)
+    # Parse arguments
+    args = parser.parse_args()
+
+    # Configure logging
+    loglevel = logging.INFO
+    if args.verbose: loglevel = logging.DEBUG
+    logging.basicConfig(
+        level=loglevel,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
+    # Init NT4
+    nt_instance = ntcore.NetworkTableInstance.getDefault()
+    table = nt_instance.getTable(NAME)
+
+    # Start NT4 server/client
+    match args.mode:
+        case 'test':
+            nt_instance.startServer()
+            logging.info("Test mode, starting NT4 server...")
+        case 'sim':
+            nt_instance.setServer("localhost")
+            logging.info("Simulation mode, connecting to localhost NT4 server...")
+        case _:
+            logging.info("Robot mode, connecting to robot NT4 server...")
+
+    # Set tag map path
+    if args.tag_map:
+        spectacle.config["AprilTagMapPath"] = args.tag_map
+        logging.info("Using AprilTag map at " + args.tag_map)
+    else:
+        logging.info("No AprilTag map provided, not using AprilTags!")
+
+    # Start NT4 clients
+    nt_instance.startClient4(NAME)
+    nt_instance.startDSClient()
+
+    match args.pipeline:
+        case "inference":
+            pass
+        case "vio":
+            pipeline = Basalt(table)
+        case _:
+            pass
+
+    pipeline.start()
+
+    while True:
+        time.sleep(0.2)
 
