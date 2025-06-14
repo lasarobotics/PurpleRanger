@@ -29,7 +29,7 @@ with depthai.Pipeline() as p:
     imu = p.create(depthai.node.IMU)
     odometry = p.create(depthai.node.BasaltVIO)
 
-    imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
+    imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_CALIBRATED], 200)
     imu.setBatchReportThreshold(1)
     imu.setMaxBatchReports(10)
 
@@ -44,6 +44,10 @@ with depthai.Pipeline() as p:
     # Run pipeline
     p.start()
     while p.isRunning():
+        if not output.has():
+            time.sleep(0.01)
+            continue
+
         transform_message = output.get()
         temp_point = transform_message.getTranslation()
         temp_quaternion = transform_message.getQuaternion()
