@@ -1,0 +1,7 @@
+opencv-python
+depthai
+numpy
+pyntcore
+robotpy-wpiutil
+robotpy-wpimath
+robotpy-apriltag
