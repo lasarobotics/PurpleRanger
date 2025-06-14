@@ -56,12 +56,16 @@ class Basalt(Pipeline):
         topics = list(config.keys())
         auto_exposure_entry = table.getBooleanTopic(topics[0]).getEntry(config[topics[0]])
         auto_exposure_entry.setDefault(config[topics[0]])
+        time.sleep(1)
         dot_projector_intensity_entry = table.getDoubleTopic(topics[1]).getEntry(config[topics[1]])
         dot_projector_intensity_entry.setDefault(config[topics[1]])
+        time.sleep(1)
         ir_floodlight_intensity_entry = table.getDoubleTopic(topics[2]).getEntry(config[topics[2]])
         ir_floodlight_intensity_entry.setDefault(config[topics[2]])
+        time.sleep(1)
         apriltag_map_path_entry = table.getStringTopic(topics[3]).getEntry(config[topics[3]])
         apriltag_map_path_entry.setDefault(config[topics[3]])
+        time.sleep(1)
 
         # Bind listener callback to subscribers
         self.nt_listener_handles = []
@@ -74,6 +78,7 @@ class Basalt(Pipeline):
     def __basalt_session(self):
         # Create pipeline
         with depthai.Pipeline() as basalt_pipeline:
+            self.status_publisher.set(False)
             device = basalt_pipeline.getDefaultDevice()
             logging.info(device.getDeviceName())
 
@@ -93,7 +98,7 @@ class Basalt(Pipeline):
             imu = basalt_pipeline.create(depthai.node.IMU)
             odometry = basalt_pipeline.create(depthai.node.BasaltVIO)
 
-            imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_CALIBRATED], 200)
+            imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_RAW], 200)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
@@ -111,7 +116,6 @@ class Basalt(Pipeline):
             while basalt_pipeline.isRunning():
                 while not self.stop_event.is_set():
                     if not output.has():
-                        self.status_publisher.set(False)
                         time.sleep(WAIT_TIME)
                         continue
 
@@ -152,6 +156,6 @@ class Basalt(Pipeline):
         time.sleep(1)
 
     def exit(self):
-        for listener_handle in self.nt_listener_handles:
-            self.nt_instance.removeListener(listener_handle)
+        self.stop()
+        return self.nt_listener_handles
 

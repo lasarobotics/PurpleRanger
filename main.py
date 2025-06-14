@@ -40,7 +40,10 @@ pipeline = Pipeline()
 
 def signal_handler(sig, frame):
     logging.info("Exiting...")
-    pipeline.stop()
+    nt_instance = ntcore.NetworkTableInstance.getDefault()
+    nt_listener_handles = pipeline.exit()
+    for listener_handle in nt_listener_handles:
+        nt_instance.removeListener(listener_handle)
     sys.exit(0)
 
 # Main function
