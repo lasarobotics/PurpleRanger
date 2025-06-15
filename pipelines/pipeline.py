@@ -12,6 +12,8 @@ class Pipeline:
         return
 
     def exit(self):
+        """Exit pipeline
+        """
         return
 
     def _update_config(self, config: dict, event: ntcore.Event) -> dict:

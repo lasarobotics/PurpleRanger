@@ -1,0 +1,16 @@
+body {
+  background-color: #663399;
+}
+
+h1 {
+  text-align: center;
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  color: white;
+}
+
+img.video_feed {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 40%;
+}

@@ -13,6 +13,7 @@ from wpimath.geometry import Pose3d, Translation3d, Rotation3d, Quaternion
 
 import depthai
 
+import variables
 from pipelines.pipeline import Pipeline
 
 WAIT_TIME = 0.005
@@ -20,7 +21,7 @@ WAIT_TIME = 0.005
 # Config variables
 config = {
     "AutoExposure": True,
-    "DotProjectorIntensity": 0.9,
+    "DotProjectorIntensity": 0.0,
     "IRFloodlightIntensity": 0.0,
     "AprilTagMapPath": "",
 }
@@ -75,30 +76,29 @@ class Basalt(Pipeline):
         self.nt_listener_handles.append(nt_instance.addListener(apriltag_map_path_entry, ntcore.EventFlags.kValueAll, self.__on_config_change))
 
 
-    def __basalt_session(self):
+    def __session(self):
         # Create pipeline
-        with depthai.Pipeline() as basalt_pipeline:
+        with depthai.Pipeline() as p:
             self.status_publisher.set(False)
-            device = basalt_pipeline.getDefaultDevice()
+            device = p.getDefaultDevice()
+            device.setLogLevel(depthai.LogLevel.DEBUG)
             logging.info(device.getDeviceName())
 
             if "OAK-D-PRO" in device.getDeviceName():
                 device.setIrLaserDotProjectorIntensity(config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(config["IRFloodlightIntensity"])
 
-            device.setTimesync(True)
-
             fps = 120
             width = 640
             height = 480
 
             # Define sources and output nodes
-            left = basalt_pipeline.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
-            right = basalt_pipeline.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C, sensorFps=fps)
-            imu = basalt_pipeline.create(depthai.node.IMU)
-            odometry = basalt_pipeline.create(depthai.node.BasaltVIO)
+            left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
+            right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C, sensorFps=fps)
+            imu = p.create(depthai.node.IMU)
+            odometry = p.create(depthai.node.BasaltVIO)
 
-            imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_RAW], 200)
+            imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
@@ -107,19 +107,21 @@ class Basalt(Pipeline):
             right.requestOutput((width, height)).link(odometry.right)
             imu.out.link(odometry.imu)
 
-            # Create output queue
-            output = odometry.transform.createOutputQueue()
+            # Create output queues
+            passthrough_queue = odometry.passthrough.createOutputQueue()
+            pose_queue = odometry.transform.createOutputQueue()
 
             # Run pipeline
-            basalt_pipeline.start()
+            p.start()
             logging.info("Basalt VIO initialised")
-            while basalt_pipeline.isRunning():
+            while p.isRunning():
                 while not self.stop_event.is_set():
-                    if not output.has():
+                    if not pose_queue.has():
                         time.sleep(WAIT_TIME)
                         continue
 
-                    transform_message = output.get()
+                    imgFrame = passthrough_queue.get()
+                    transform_message = pose_queue.get()
                     temp_point = transform_message.getTranslation()
                     temp_quaternion = transform_message.getQuaternion()
 
@@ -132,28 +134,28 @@ class Basalt(Pipeline):
                     self.pose_publisher.set(pose)
                     logging.debug(str(pose))
 
+                    frame = imgFrame.getCvFrame()
+
+                    with variables.video_lock:
+                        variables.video_frame = frame.copy()
+
                     time.sleep(WAIT_TIME)
 
-                basalt_pipeline.stop()
+                p.stop()
                 logging.info("Basalt VIO stopped")
 
 
     def start(self):
-        """Start Basalt VIO session
-        """
-
         self.stop_event.clear()
-        self.basalt_thread = threading.Thread(target=self.__basalt_session)
+        self.basalt_thread = threading.Thread(target=self.__session)
         self.basalt_thread.start()
 
 
     def stop(self):
-        """Stop Basalt VIO session
-        """
-
         self.stop_event.set()
         self.basalt_thread.join()
         time.sleep(1)
+
 
     def exit(self):
         self.stop()
