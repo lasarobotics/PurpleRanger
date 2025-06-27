@@ -22,6 +22,7 @@ from flask import render_template
 import variables
 from pipelines.pipeline import Pipeline
 from pipelines.basalt import Basalt
+from pipelines.rtabmap import RTABMap
 from pipelines.apriltag import AprilTag
 from pipelines.object_tracker import ObjectTracker
 

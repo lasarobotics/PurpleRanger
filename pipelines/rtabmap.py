@@ -27,7 +27,7 @@ config = {
 }
 
 
-class Basalt(Pipeline):
+class RTABMap(Pipeline):
     def __init__(self, table: ntcore.NetworkTable):
         self.stop_event = threading.Event()
         self.__nt_init(table)
@@ -90,40 +90,71 @@ class Basalt(Pipeline):
                 device.setIrLaserDotProjectorIntensity(config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(config["IRFloodlightIntensity"])
 
-            fps = 120
+            fps = 30
             width = 640
-            height = 480
-
-            # Define sources and output nodes
+            height = 400
+            # Define sources and outputs
             left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
             right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C, sensorFps=fps)
             imu = p.create(depthai.node.IMU)
-            odometry = p.create(depthai.node.BasaltVIO)
+            stereo = p.create(depthai.node.StereoDepth)
+            featureTracker = p.create(depthai.node.FeatureTracker)
+            odom = p.create(depthai.node.RTABMapVIO)
+            slam = p.create(depthai.node.RTABMapSLAM)
+
+            params = {
+                "RGBD/CreateOccupancyGrid": "true",
+                "Grid/3D": "true",
+                "Rtabmap/SaveWMState": "true"
+            }
+            slam.setParams(params)
 
             imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
-            # Link nodes
-            left.requestOutput((width, height)).link(odometry.left)
-            right.requestOutput((width, height)).link(odometry.right)
-            imu.out.link(odometry.imu)
+            featureTracker.setHardwareResources(1,2)
+            featureTracker.initialConfig.setCornerDetector(depthai.FeatureTrackerConfig.CornerDetector.Type.SHI_THOMASI)
+            featureTracker.initialConfig.setNumTargetFeatures(1000)
+            featureTracker.initialConfig.setMotionEstimator(False)
+            featureTracker.initialConfig.FeatureMaintainer.minimumDistanceBetweenFeatures = 49
+
+            stereo.setExtendedDisparity(False)
+            stereo.setLeftRightCheck(True)
+            stereo.setRectifyEdgeFillColor(0)
+            stereo.enableDistortionCorrection(True)
+            stereo.initialConfig.setLeftRightCheckThreshold(10)
+            stereo.setDepthAlign(depthai.CameraBoardSocket.CAM_B)
+
+
+            # Linking
+            left.requestOutput((width, height)).link(stereo.left)
+            right.requestOutput((width, height)).link(stereo.right)
+            stereo.rectifiedLeft.link(featureTracker.inputImage)
+            featureTracker.passthroughInputImage.link(odom.rect)
+            stereo.depth.link(odom.depth)
+            featureTracker.outputFeatures.link(odom.features)
+            imu.out.link(odom.imu)
+
+            odom.transform.link(slam.odom)
+            odom.passthroughRect.link(slam.rect)
+            odom.passthroughDepth.link(slam.depth)
 
             # Create output queues
-            passthrough_queue = odometry.passthrough.createOutputQueue()
-            transform_queue = odometry.transform.createOutputQueue()
+            passthrough_queue = odom.passthroughRect.createOutputQueue()
+            pose_queue = odom.transform.createOutputQueue()
 
             # Run pipeline
             p.start()
-            logging.info("Basalt VIO initialised")
+            logging.info("RTAPMap VIO initialised")
             while p.isRunning():
                 while not self.stop_event.is_set():
-                    if not transform_queue.has():
+                    if not pose_queue.has():
                         time.sleep(WAIT_TIME)
                         continue
 
                     imgFrame = passthrough_queue.get()
-                    transform_message = transform_queue.get()
+                    transform_message = pose_queue.get()
                     temp_point = transform_message.getTranslation()
                     temp_quaternion = transform_message.getQuaternion()
 
@@ -144,18 +175,18 @@ class Basalt(Pipeline):
                     time.sleep(WAIT_TIME)
 
                 p.stop()
-                logging.info("Basalt VIO stopped")
+                logging.info("RTABMap VIO stopped")
 
 
     def start(self):
         self.stop_event.clear()
-        self.basalt_thread = threading.Thread(target=self.__session)
-        self.basalt_thread.start()
+        self.rtabmap_thread = threading.Thread(target=self.__session)
+        self.rtabmap_thread.start()
 
 
     def stop(self):
         self.stop_event.set()
-        self.basalt_thread.join()
+        self.rtabmap_thread.join()
         time.sleep(1)
 
 

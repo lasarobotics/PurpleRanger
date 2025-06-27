@@ -61,7 +61,7 @@ class ObjectTracker(Pipeline):
             font_color = (0, 255, 0)
             p.start()
             logging.info("Object tracker initialised")
-            while(p.isRunning()):
+            while p.isRunning():
                 while not self.stop_event.is_set():
                     imgFrame = preview.get()
                     track = tracklets.get()
