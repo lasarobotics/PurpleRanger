@@ -14,7 +14,7 @@ from wpimath.geometry import Pose3d, Translation3d, Rotation3d, Quaternion
 import depthai
 
 import variables
-from pipelines.pipeline import Pipeline
+from .pipeline import Pipeline
 
 WAIT_TIME = 0.005
 
@@ -98,20 +98,46 @@ class Basalt(Pipeline):
             left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
             right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C, sensorFps=fps)
             imu = p.create(depthai.node.IMU)
-            odometry = p.create(depthai.node.BasaltVIO)
+            odom = p.create(depthai.node.BasaltVIO)
+            slam = p.create(depthai.node.RTABMapSLAM)
+            stereo = p.create(depthai.node.StereoDepth)
+            params = {
+                "RGBD/CreateOccupancyGrid": "true",
+                "Grid/3D": "true",
+                "Rtabmap/SaveWMState": "true"
+            }
+            slam.setParams(params)
 
             imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
+            stereo.setExtendedDisparity(False)
+            stereo.setLeftRightCheck(True)
+            stereo.setSubpixel(True)
+            stereo.setRectifyEdgeFillColor(0)
+            stereo.enableDistortionCorrection(True)
+            stereo.initialConfig.setLeftRightCheckThreshold(10)
+            stereo.setDepthAlign(depthai.CameraBoardSocket.CAM_B)
+
+
             # Link nodes
-            left.requestOutput((width, height)).link(odometry.left)
-            right.requestOutput((width, height)).link(odometry.right)
-            imu.out.link(odometry.imu)
+            #left.requestOutput((width, height)).link(odom.left)
+            #right.requestOutput((width, height)).link(odom.right)
+            #imu.out.link(odom.imu)
+            left.requestOutput((width, height)).link(stereo.left)
+            right.requestOutput((width, height)).link(stereo.right)
+            stereo.syncedLeft.link(odom.left)
+            stereo.syncedRight.link(odom.right)
+            stereo.depth.link(slam.depth)
+            stereo.rectifiedLeft.link(slam.rect)
+            imu.out.link(odom.imu)
+
+            odom.transform.link(slam.odom)
 
             # Create output queues
-            passthrough_queue = odometry.passthrough.createOutputQueue()
-            transform_queue = odometry.transform.createOutputQueue()
+            passthrough_queue = odom.passthrough.createOutputQueue()
+            transform_queue = slam.transform.createOutputQueue()
 
             # Run pipeline
             p.start()

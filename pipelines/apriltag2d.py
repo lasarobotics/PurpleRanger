@@ -9,9 +9,9 @@ import cv2
 import depthai
 
 import variables
-from pipelines.pipeline import Pipeline
+from .pipeline import Pipeline
 
-class AprilTag(Pipeline):
+class AprilTag2D(Pipeline):
     def __init__(self):
         self.stop_event = threading.Event()
         self.color = (0, 255, 0)

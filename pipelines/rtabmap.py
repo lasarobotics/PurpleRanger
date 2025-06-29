@@ -14,7 +14,7 @@ from wpimath.geometry import Pose3d, Translation3d, Rotation3d, Quaternion
 import depthai
 
 import variables
-from pipelines.pipeline import Pipeline
+from .pipeline import Pipeline
 
 WAIT_TIME = 0.005
 

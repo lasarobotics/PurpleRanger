@@ -20,11 +20,7 @@ from flask import Flask
 from flask import render_template
 
 import variables
-from pipelines.pipeline import Pipeline
-from pipelines.basalt import Basalt
-from pipelines.rtabmap import RTABMap
-from pipelines.apriltag import AprilTag
-from pipelines.object_tracker import ObjectTracker
+from pipelines import Pipeline, AprilTag2D, AprilTag3D, Basalt, ObjectTracker, RTABMap
 
 NAME = "PurpleRanger"
 
@@ -97,7 +93,7 @@ if __name__ ==  "__main__":
 
     # Add arguments
     parser.add_argument("--mode", required=True, choices=["test", "sim", "robot"], help="select script mode")
-    parser.add_argument("--pipeline", required=True, choices=["vio", "object", "apriltag"], help="pipeline type")
+    parser.add_argument("--pipeline", required=True, choices=["vio", "object", "apriltag2d", "apriltag3d"], help="pipeline type")
     parser.add_argument("--tag-map", help="path to AprilTag map JSON file")
     parser.add_argument("--verbose", action="store_true", help="debug level output")
 
@@ -147,8 +143,10 @@ if __name__ ==  "__main__":
             pipeline = ObjectTracker()
         case "vio":
             pipeline = Basalt(table)
-        case "apriltag":
-            pipeline = AprilTag()
+        case "apriltag2d":
+            pipeline = AprilTag2D()
+        case "apriltag3d":
+            pipeline = AprilTag3D(table)
         case _:
             pass
 

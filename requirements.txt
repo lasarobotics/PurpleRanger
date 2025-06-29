@@ -1,4 +1,4 @@
-depthai
+depthai==3.*
 flask
 opencv-python
 numpy
