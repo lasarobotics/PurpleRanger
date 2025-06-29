@@ -1,30 +1,18 @@
 import depthai
 
+import math
+
 import numpy as np
 from robotpy_apriltag import AprilTag, AprilTagFieldLayout
-from wpimath.geometry import Pose3d, Transform3d, Translation3d
+from wpimath.geometry import Pose3d, Transform3d, Translation3d, Rotation3d
 
 from .multiTargetPNPResult import PnpResult
 from .tagCorner import TagCorner
 from . import OpenCVHelp, TargetModel
 
+TAG_TRANSFORM = Transform3d(Translation3d(), Rotation3d(math.pi, 0.0, math.pi))
 
 class AprilTagPoseEstimation:
-    @staticmethod
-    def getVisibleLayoutTags(
-        visTags: list[depthai.AprilTag],
-        layout: AprilTagFieldLayout) -> list[AprilTag]:
-        """Get the visible :class:`.AprilTag`s which are in the tag layout using the visible tag IDs."""
-
-        retVal: list[AprilTag] = []
-        for tag in visTags:
-            maybePose = layout.getTagPose(tag.id)
-            if maybePose:
-                aprilTag = AprilTag()
-                aprilTag.ID = id
-                aprilTag.pose = maybePose
-                retVal.append(aprilTag)
-        return retVal
 
     @staticmethod
     def estimateCamPosePNP(
@@ -64,7 +52,7 @@ class AprilTagPoseEstimation:
             if maybePose:
                 tag = AprilTag()
                 tag.ID = target.id
-                tag.pose = maybePose
+                tag.pose = maybePose.transformBy(TAG_TRANSFORM)
                 knownTags.append(tag)
                 currentCorners = [
                     TagCorner(target.topLeft.x, target.topLeft.y),
