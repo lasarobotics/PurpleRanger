@@ -6,6 +6,7 @@ import signal
 import logging
 import argparse
 import threading
+import math
 
 import ntcore
 from wpiutil import wpistruct
@@ -90,7 +91,7 @@ class Basalt(Pipeline):
                 device.setIrLaserDotProjectorIntensity(config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(config["IRFloodlightIntensity"])
 
-            fps = 120
+            fps = 90 
             width = 640
             height = 480
 
@@ -138,12 +139,41 @@ class Basalt(Pipeline):
             # Create output queues
             passthrough_queue = odom.passthrough.createOutputQueue()
             transform_queue = slam.transform.createOutputQueue()
+            imu_queue = imu.out.createOutputQueue()
 
             # Run pipeline
             p.start()
             logging.info("Basalt VIO initialised")
+
+            
+
             while p.isRunning():
                 while not self.stop_event.is_set():
+                   
+                    #there was something here but I am lazy
+                    if not False:
+                        imu_data = imu_queue.get()
+                        imu_packets = imu_data.packets
+
+                        print(imu_data)
+                        
+                        for imuPacket in imu_packets:
+                            print(imuPacket)
+
+                            acceleroValues = imuPacket.acceleroMeter
+                            gyroValues = imuPacket.gyroscope
+
+                            imuF = "{:.06f}"
+                            tsF  = "{:.03f}"
+                            # print(f"Accelerometer [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")
+
+                            total_accel = math.sqrt((acceleroValues.x ** 2) + (acceleroValues.y ** 2) + (acceleroValues.z ** 2))
+                            total_rotation = math.sqrt((gyroValues.x ** 2) + (gyroValues.y ** 2) + (gyroValues.z ** 2))
+
+                            if (total_accel - 9.81) < 0.2 and total_rotation < 0.2:
+                                print("within tolerence")
+                                print(f"Grav vector is [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")    
+
                     if not transform_queue.has():
                         time.sleep(WAIT_TIME)
                         continue
@@ -160,7 +190,7 @@ class Basalt(Pipeline):
 
                     self.status_publisher.set(True)
                     self.pose_publisher.set(pose)
-                    logging.debug(str(pose))
+                    # logging.debug(str(pose))
 
                     frame = imgFrame.getCvFrame()
 
