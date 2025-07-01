@@ -176,7 +176,7 @@ class TargetModel:
 
     @classmethod
     def AprilTag36h11(cls) -> Self:
-        return cls.createPlanar(width=6.75 * 0.0254, height=6.75 * 0.0254)
+        return cls.createPlanar(width=6.5 * 0.0254, height=6.5 * 0.0254)
 
     @classmethod
     def AprilTag16h5(cls) -> Self:
