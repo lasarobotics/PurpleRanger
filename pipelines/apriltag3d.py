@@ -12,20 +12,25 @@ import depthai
 
 import ntcore
 from robotpy_apriltag import AprilTagField, AprilTagFieldLayout
-from wpimath.geometry import Pose3d
+from wpimath.geometry import Pose3d, Twist3d, Transform3d, Translation3d, Rotation3d, Quaternion
 
 import variables
 from .pipeline import Pipeline
 from utils.apriltag import AprilTagPoseEstimation, TargetModel
+
+EPSILON = 1e-6
+CENTER_TO_LEFT = Transform3d(0, -0.0375, 0, Rotation3d())
+CENTER_TO_RIGHT = Transform3d(0, +0.0375, 0, Rotation3d())
 
 class AprilTag3D(Pipeline):
     def __init__(self, table: ntcore.NetworkTable):
         self.stop_event = threading.Event()
         self.__nt_init(table)
         self.color = (255, 0, 255)
+        self.text_thickness = 3
         self.start_time = time.monotonic()
         self.counter = 0
-        self.fps = 0.0
+        self.fps = 120
 
     def __nt_init(self, table: ntcore.NetworkTable):
         nt_instance = table.getInstance()
@@ -38,11 +43,15 @@ class AprilTag3D(Pipeline):
         with depthai.Pipeline() as p:
             device = p.getDefaultDevice()
             calib = device.readCalibration()
-            host_camera = p.create(depthai.node.Camera).build()
-            apriltag_node = p.create(depthai.node.AprilTag)
-            host_camera.requestOutput((1280, 720)).link(apriltag_node.inputImage)
-            passthrough_output_queue = apriltag_node.passthroughInputImage.createOutputQueue()
-            output_queue = apriltag_node.out.createOutputQueue()
+            left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B)
+            right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C)
+            left_apriltag_node = p.create(depthai.node.AprilTag)
+            right_apriltag_node = p.create(depthai.node.AprilTag)
+            left.requestOutput((1280, 720), depthai.ImgFrame.Type.BGR888p).link(left_apriltag_node.inputImage)
+            right.requestOutput((1280, 720), depthai.ImgFrame.Type.BGR888p).link(right_apriltag_node.inputImage)
+            passthrough_output_queue = left_apriltag_node.passthroughInputImage.createOutputQueue()
+            left_output_queue = left_apriltag_node.out.createOutputQueue()
+            right_output_queue = right_apriltag_node.out.createOutputQueue()
 
             field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2025ReefscapeWelded)
 
@@ -50,9 +59,12 @@ class AprilTag3D(Pipeline):
             logging.info("AprilTag tracker initialised")
             while p.isRunning():
                 while not self.stop_event.is_set():
-                    apriltag_message = output_queue.get()
-                    assert(isinstance(apriltag_message, depthai.AprilTags))
-                    tags = apriltag_message.aprilTags
+                    left_apriltag_message = left_output_queue.get()
+                    right_apriltag_message = right_output_queue.get()
+                    assert(isinstance(left_apriltag_message, depthai.AprilTags))
+                    assert(isinstance(right_apriltag_message, depthai.AprilTags))
+                    left_tags = left_apriltag_message.aprilTags
+                    right_tags = right_apriltag_message.aprilTags
 
                     self.counter += 1
                     current_time = time.monotonic()
@@ -67,7 +79,7 @@ class AprilTag3D(Pipeline):
                     def to_int(tag):
                         return (int(tag.x), int(tag.y))
 
-                    for tag in tags:
+                    for tag in left_tags:
                         top_left = to_int(tag.topLeft)
                         top_right = to_int(tag.topRight)
                         bottom_right = to_int(tag.bottomRight)
@@ -75,34 +87,59 @@ class AprilTag3D(Pipeline):
 
                         center = (int((top_left[0] + bottom_right[0]) / 2), int((top_left[1] + bottom_right[1]) / 2))
 
-                        #print(str(top_left) + " " + str(top_right) + " " + str(bottom_left) + " " + str(bottom_right))
-
                         cv2.line(frame, top_left, top_right, self.color, 2, cv2.LINE_AA, 0)
                         cv2.line(frame, top_right,bottom_right, self.color, 2, cv2.LINE_AA, 0)
                         cv2.line(frame, bottom_right,bottom_left, self.color, 2, cv2.LINE_AA, 0)
                         cv2.line(frame, bottom_left,top_left, self.color, 2, cv2.LINE_AA, 0)
 
-                        idStr = "ID: " + str(tag.id)
-                        cv2.putText(frame, idStr, center, cv2.FONT_HERSHEY_TRIPLEX, 0.5, self.color)
+                        cv2.putText(frame, str(tag.id), center, cv2.FONT_HERSHEY_SIMPLEX, 1.0, self.color, self.text_thickness)
 
-                        cv2.putText(frame, f"fps: {self.fps:.1f}", (200, 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, self.color)
+                        cv2.putText(frame, f"fps: {self.fps:.1f}", (200, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color)
 
-                    estimate = AprilTagPoseEstimation.estimateCamPosePNP(
-                        np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_A, 1280, 720)),
-                        np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_A)),
-                        tags,
+                    left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(
+                        np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, 1280, 720)),
+                        np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B)),
+                        left_tags,
                         field_layout,
                         TargetModel.AprilTag36h11()
                     )
 
-                    #print(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_A))
-                    if estimate is not None:
-                        pose = Pose3d(estimate.best.translation(), estimate.best.rotation())
-                        self.status_publisher.set(True)
-                        self.pose_publisher.set(pose)
-                        logging.debug(str(pose))
-                    else:
-                        self.status_publisher.set(False)
+                    right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(
+                        np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_C, 1280, 720)),
+                        np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_C)),
+                        right_tags,
+                        field_layout,
+                        TargetModel.AprilTag36h11()
+                    )
+
+                    status = False
+                    pose = Pose3d()
+                    if left_estimate is None and right_estimate is None:
+                        logging.debug("No tags seen")
+                    elif left_estimate is not None and right_estimate is not None:
+                        status = True
+                        left_center_offset = CENTER_TO_LEFT.inverse().translation().rotateBy(right_estimate.best.rotation())
+                        right_center_offset = CENTER_TO_RIGHT.inverse().translation().rotateBy(right_estimate.best.rotation())
+                        left_pose = Pose3d(left_estimate.best.translation() + left_center_offset, left_estimate.best.rotation())
+                        right_pose = Pose3d(right_estimate.best.translation() + right_center_offset, right_estimate.best.rotation())
+                        twist = left_pose.log(right_pose)
+                        scaled_twist = Twist3d(
+                            twist.dx / 2, twist.dy / 2, twist.dz / 2,
+                            twist.rx / 2, twist.ry / 2, twist.rz / 2
+                        )
+                        pose = left_pose.exp(scaled_twist)
+                    elif left_estimate is None:
+                        status = True
+                        right_center_offset = CENTER_TO_RIGHT.inverse().translation().rotateBy(right_estimate.best.rotation())
+                        pose = Pose3d(right_estimate.best.translation() + right_center_offset, right_estimate.best.rotation())
+                    elif right_estimate is None:
+                        status = True
+                        left_center_offset = CENTER_TO_LEFT.inverse().translation().rotateBy(left_estimate.best.rotation())
+                        pose = Pose3d(left_estimate.best.translation() + left_center_offset, left_estimate.best.rotation())
+
+                    self.status_publisher.set(status)
+                    if status: self.pose_publisher.set(pose)
+                    logging.debug(str(pose))
 
                     # Copy frame for output
                     with variables.video_lock:

@@ -11,8 +11,17 @@ from .tagCorner import TagCorner
 from . import OpenCVHelp, TargetModel
 
 TAG_TRANSFORM = Transform3d(Translation3d(), Rotation3d(math.pi, 0.0, math.pi))
+ROLL_THRESHOLD = math.radians(60.0)
+PITCH_THRESHOLD = math.radians(60.0)
 
 class AprilTagPoseEstimation:
+
+    @staticmethod
+    def isResultValid(result: PnpResult) -> PnpResult:
+        # if abs(result.best.rotation().X()) > ROLL_THRESHOLD or abs(result.best.rotation().Y() > PITCH_THRESHOLD):
+        #     return None
+
+        return result
 
     @staticmethod
     def estimateCamPosePNP(
@@ -87,7 +96,8 @@ class AprilTagPoseEstimation:
                 bestReprojErr=camToTag.bestReprojErr,
                 altReprojErr=camToTag.altReprojErr,
             )
-            return result
+            return AprilTagPoseEstimation.isResultValid(result)
+
         # multi-tag pnp
         else:
             objectTrls: list[Translation3d] = []
@@ -95,10 +105,11 @@ class AprilTagPoseEstimation:
                 verts = tagModel.getFieldVertices(tag.pose)
                 objectTrls += verts
 
-            ret = OpenCVHelp.solvePNP_SQPNP(cameraMatrix, distCoeffs, objectTrls, points)
-            if ret:
+            result = OpenCVHelp.solvePNP_SQPNP(cameraMatrix, distCoeffs, objectTrls, points)
+            if result:
                 # Invert best/alt transforms
-                ret.best = ret.best.inverse()
-                ret.alt = ret.alt.inverse()
+                result.best = result.best.inverse()
+                result.alt = result.alt.inverse()
 
-            return ret
+            return AprilTagPoseEstimation.isResultValid(result)
+
