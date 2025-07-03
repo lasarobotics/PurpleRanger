@@ -44,14 +44,16 @@ class Basalt(Pipeline):
             event (ntcore.Event): NT4 event
         """
 
-        stop()
+        print("Config changed!")
+        self.stop()
         config = super()._update_config(config, event)
-        start()
+        self.start()
 
 
     def __nt_init(self, table: ntcore.NetworkTable):
         nt_instance = table.getInstance()
 
+        logging.info("Initializing network table...")
         # Create NT4 output publishers
         self.status_publisher = table.getBooleanTopic("Status").publish(ntcore.PubSubOptions(keepDuplicates=True, sendAll=True))
         self.pose_publisher = table.getStructTopic("Pose", Pose3d).publish(ntcore.PubSubOptions(keepDuplicates=True, sendAll=True))
@@ -91,7 +93,7 @@ class Basalt(Pipeline):
                 device.setIrLaserDotProjectorIntensity(config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(config["IRFloodlightIntensity"])
 
-            fps = 90 
+            fps = 90
             width = 640
             height = 480
 
@@ -123,9 +125,6 @@ class Basalt(Pipeline):
 
 
             # Link nodes
-            #left.requestOutput((width, height)).link(odom.left)
-            #right.requestOutput((width, height)).link(odom.right)
-            #imu.out.link(odom.imu)
             left.requestOutput((width, height)).link(stereo.left)
             right.requestOutput((width, height)).link(stereo.right)
             stereo.syncedLeft.link(odom.left)
@@ -145,18 +144,16 @@ class Basalt(Pipeline):
             p.start()
             logging.info("Basalt VIO initialised")
 
-            
-
             while p.isRunning():
                 while not self.stop_event.is_set():
-                   
+
                     #there was something here but I am lazy
                     if not False:
                         imu_data = imu_queue.get()
                         imu_packets = imu_data.packets
 
                         print(imu_data)
-                        
+
                         for imuPacket in imu_packets:
                             print(imuPacket)
 
@@ -172,7 +169,7 @@ class Basalt(Pipeline):
 
                             if (total_accel - 9.81) < 0.2 and total_rotation < 0.2:
                                 print("within tolerence")
-                                print(f"Grav vector is [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")    
+                                print(f"Grav vector is [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")
 
                     if not transform_queue.has():
                         time.sleep(WAIT_TIME)
@@ -190,7 +187,7 @@ class Basalt(Pipeline):
 
                     self.status_publisher.set(True)
                     self.pose_publisher.set(pose)
-                    # logging.debug(str(pose))
+                    logging.debug(str(pose))
 
                     frame = imgFrame.getCvFrame()
 
