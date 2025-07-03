@@ -19,8 +19,8 @@ from .pipeline import Pipeline
 from utils.apriltag import AprilTagPoseEstimation, TargetModel
 
 EPSILON = 1e-6
-CENTER_TO_LEFT = Transform3d(0, -0.0375, 0, Rotation3d())
-CENTER_TO_RIGHT = Transform3d(0, +0.0375, 0, Rotation3d())
+CENTER_TO_LEFT = Transform3d(0, +0.0375, 0, Rotation3d())
+CENTER_TO_RIGHT = Transform3d(0, -0.0375, 0, Rotation3d())
 
 class AprilTag3D(Pipeline):
     def __init__(self, table: ntcore.NetworkTable):
