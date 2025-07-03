@@ -33,7 +33,8 @@ robot: Connect to robot NT4 server
 Pipeline type:
 vio: Visual Inertial Odometry pipeline
 object: object tracking
-apriltag: 2D apriltag tracking
+apriltag2d: 2D apriltag tracking
+apriltag3d: 3D apriltag pose estimation
 """
 
 # Initialize variables
