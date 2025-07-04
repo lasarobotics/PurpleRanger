@@ -152,10 +152,10 @@ class Basalt(Pipeline):
                         imu_data = imu_queue.get()
                         imu_packets = imu_data.packets
 
-                        print(imu_data)
+                        #print(imu_data)
 
                         for imuPacket in imu_packets:
-                            print(imuPacket)
+                            #print(imuPacket)
 
                             acceleroValues = imuPacket.acceleroMeter
                             gyroValues = imuPacket.gyroscope
@@ -167,9 +167,9 @@ class Basalt(Pipeline):
                             total_accel = math.sqrt((acceleroValues.x ** 2) + (acceleroValues.y ** 2) + (acceleroValues.z ** 2))
                             total_rotation = math.sqrt((gyroValues.x ** 2) + (gyroValues.y ** 2) + (gyroValues.z ** 2))
 
-                            if (total_accel - 9.81) < 0.2 and total_rotation < 0.2:
-                                print("within tolerence")
-                                print(f"Grav vector is [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")
+                            #if (total_accel - 9.81) < 0.2 and total_rotation < 0.2:
+                                #print("within tolerence")
+                                #print(f"Grav vector is [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")
 
                     if not transform_queue.has():
                         time.sleep(WAIT_TIME)

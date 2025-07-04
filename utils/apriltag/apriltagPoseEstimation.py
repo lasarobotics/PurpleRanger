@@ -1,10 +1,12 @@
-import depthai
-
 import math
+import logging
 
 import numpy as np
+
+import depthai
+
 from robotpy_apriltag import AprilTag, AprilTagFieldLayout
-from wpimath.geometry import Pose3d, Transform3d, Translation3d, Rotation3d
+from wpimath.geometry import Pose3d, Twist3d, Transform3d, Translation3d, Rotation3d
 
 from .multiTargetPNPResult import PnpResult
 from .tagCorner import TagCorner
@@ -15,6 +17,33 @@ ROLL_THRESHOLD = math.radians(60.0)
 PITCH_THRESHOLD = math.radians(60.0)
 
 class AprilTagPoseEstimation:
+
+    @staticmethod
+    def mergePoses(left_estimate: PnpResult, right_estimate: PnpResult, baseline: float):
+        center_to_left = Transform3d(0, +baseline / 2, 0, Rotation3d())
+        center_to_right = Transform3d(0, -baseline / 2, 0, Rotation3d())
+        pose = None
+        if left_estimate is None and right_estimate is None:
+            logging.debug("No tags seen")
+        elif left_estimate is not None and right_estimate is not None:
+            left_center_offset = center_to_left.inverse().translation().rotateBy(right_estimate.best.rotation())
+            right_center_offset = center_to_right.inverse().translation().rotateBy(right_estimate.best.rotation())
+            left_pose = Pose3d(left_estimate.best.translation() + left_center_offset, left_estimate.best.rotation())
+            right_pose = Pose3d(right_estimate.best.translation() + right_center_offset, right_estimate.best.rotation())
+            twist = left_pose.log(right_pose)
+            scaled_twist = Twist3d(
+                twist.dx / 2, twist.dy / 2, twist.dz / 2,
+                twist.rx / 2, twist.ry / 2, twist.rz / 2
+            )
+            pose = left_pose.exp(scaled_twist)
+        elif left_estimate is None:
+            right_center_offset = center_to_right.inverse().translation().rotateBy(right_estimate.best.rotation())
+            pose = Pose3d(right_estimate.best.translation() + right_center_offset, right_estimate.best.rotation())
+        elif right_estimate is None:
+            left_center_offset = center_to_left.inverse().translation().rotateBy(left_estimate.best.rotation())
+            pose = Pose3d(left_estimate.best.translation() + left_center_offset, left_estimate.best.rotation())
+
+        return pose
 
     @staticmethod
     def isResultValid(result: PnpResult) -> PnpResult:
@@ -29,7 +58,8 @@ class AprilTagPoseEstimation:
         distCoeffs: np.ndarray,
         visibleTags: list[depthai.AprilTag],
         layout: AprilTagFieldLayout,
-        tagModel: TargetModel) -> PnpResult | None:
+        tagModel: TargetModel,
+        tagBlacklist: list[int]) -> PnpResult | None:
         """Performs solvePNP using 3d-2d point correspondences of visible AprilTags to estimate the
         field-to-camera transformation. If only one tag is visible, the result may have an alternate
         solution.
@@ -42,7 +72,7 @@ class AprilTagPoseEstimation:
 
         :param cameraMatrix: The camera intrinsics matrix in standard opencv form
         :param distCoeffs:   The camera distortion matrix in standard opencv form
-        :param visTags:      The visible tags reported by PV. Non-tag targets are automatically excluded.
+        :param visibleTags:      The visible tags reported by PV. Non-tag targets are automatically excluded.
         :param tagLayout:    The known tag layout on the field
 
         :returns: The transformation that maps the field origin to the camera pose. Ensure the {@link
@@ -57,6 +87,7 @@ class AprilTagPoseEstimation:
 
         # ensure these are AprilTags in our layout
         for target in visibleTags:
+            if target.id in tagBlacklist: continue
             maybePose = layout.getTagPose(target.id)
             if maybePose:
                 tag = AprilTag()

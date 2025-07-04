@@ -19,8 +19,7 @@ from .pipeline import Pipeline
 from utils.apriltag import AprilTagPoseEstimation, TargetModel
 
 EPSILON = 1e-6
-CENTER_TO_LEFT = Transform3d(0, +0.0375, 0, Rotation3d())
-CENTER_TO_RIGHT = Transform3d(0, -0.0375, 0, Rotation3d())
+BASELINE = 0.075
 
 class AprilTag3D(Pipeline):
     def __init__(self, table: ntcore.NetworkTable):
@@ -113,33 +112,12 @@ class AprilTag3D(Pipeline):
                     )
 
                     status = False
-                    pose = Pose3d()
-                    if left_estimate is None and right_estimate is None:
-                        logging.debug("No tags seen")
-                    elif left_estimate is not None and right_estimate is not None:
-                        status = True
-                        left_center_offset = CENTER_TO_LEFT.inverse().translation().rotateBy(right_estimate.best.rotation())
-                        right_center_offset = CENTER_TO_RIGHT.inverse().translation().rotateBy(right_estimate.best.rotation())
-                        left_pose = Pose3d(left_estimate.best.translation() + left_center_offset, left_estimate.best.rotation())
-                        right_pose = Pose3d(right_estimate.best.translation() + right_center_offset, right_estimate.best.rotation())
-                        twist = left_pose.log(right_pose)
-                        scaled_twist = Twist3d(
-                            twist.dx / 2, twist.dy / 2, twist.dz / 2,
-                            twist.rx / 2, twist.ry / 2, twist.rz / 2
-                        )
-                        pose = left_pose.exp(scaled_twist)
-                    elif left_estimate is None:
-                        status = True
-                        right_center_offset = CENTER_TO_RIGHT.inverse().translation().rotateBy(right_estimate.best.rotation())
-                        pose = Pose3d(right_estimate.best.translation() + right_center_offset, right_estimate.best.rotation())
-                    elif right_estimate is None:
-                        status = True
-                        left_center_offset = CENTER_TO_LEFT.inverse().translation().rotateBy(left_estimate.best.rotation())
-                        pose = Pose3d(left_estimate.best.translation() + left_center_offset, left_estimate.best.rotation())
-
+                    pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, BASELINE)
+                    if pose is not None: status = True
                     self.status_publisher.set(status)
-                    if status: self.pose_publisher.set(pose)
-                    logging.debug(str(pose))
+                    if status:
+                        self.pose_publisher.set(pose)
+                        logging.debug(str(pose))
 
                     # Copy frame for output
                     with variables.video_lock:
