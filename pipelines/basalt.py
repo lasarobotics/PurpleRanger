@@ -93,9 +93,14 @@ class Basalt(Pipeline):
                 device.setIrLaserDotProjectorIntensity(config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(config["IRFloodlightIntensity"])
 
-            fps = 90
-            width = 640
-            height = 480
+            fps = 120
+            frame_width = 1280
+            frame_height = 800
+
+            if "OAK-D-LITE" in device.getDeviceName():
+                fps = 90
+                frame_width = 640
+                frame_height = 480
 
             # Define sources and output nodes
             left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
@@ -111,10 +116,12 @@ class Basalt(Pipeline):
             }
             slam.setParams(params)
 
+            # Setup IMU
             imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
+            # Setup stereo
             stereo.setExtendedDisparity(False)
             stereo.setLeftRightCheck(True)
             stereo.setSubpixel(True)
@@ -125,14 +132,13 @@ class Basalt(Pipeline):
 
 
             # Link nodes
-            left.requestOutput((width, height)).link(stereo.left)
-            right.requestOutput((width, height)).link(stereo.right)
+            left.requestOutput((frame_width, frame_height)).link(stereo.left)
+            right.requestOutput((frame_width, frame_height)).link(stereo.right)
             stereo.syncedLeft.link(odom.left)
             stereo.syncedRight.link(odom.right)
             stereo.depth.link(slam.depth)
             stereo.rectifiedLeft.link(slam.rect)
             imu.out.link(odom.imu)
-
             odom.transform.link(slam.odom)
 
             # Create output queues
@@ -146,31 +152,6 @@ class Basalt(Pipeline):
 
             while p.isRunning():
                 while not self.stop_event.is_set():
-
-                    #there was something here but I am lazy
-                    if not False:
-                        imu_data = imu_queue.get()
-                        imu_packets = imu_data.packets
-
-                        #print(imu_data)
-
-                        for imuPacket in imu_packets:
-                            #print(imuPacket)
-
-                            acceleroValues = imuPacket.acceleroMeter
-                            gyroValues = imuPacket.gyroscope
-
-                            imuF = "{:.06f}"
-                            tsF  = "{:.03f}"
-                            # print(f"Accelerometer [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")
-
-                            total_accel = math.sqrt((acceleroValues.x ** 2) + (acceleroValues.y ** 2) + (acceleroValues.z ** 2))
-                            total_rotation = math.sqrt((gyroValues.x ** 2) + (gyroValues.y ** 2) + (gyroValues.z ** 2))
-
-                            #if (total_accel - 9.81) < 0.2 and total_rotation < 0.2:
-                                #print("within tolerence")
-                                #print(f"Grav vector is [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")
-
                     if not transform_queue.has():
                         time.sleep(WAIT_TIME)
                         continue

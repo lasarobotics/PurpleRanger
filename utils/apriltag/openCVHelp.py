@@ -2,7 +2,9 @@ import logging
 import math
 from typing import Any
 
-import cv2 as cv
+import depthai
+
+import cv2
 import numpy as np
 from wpimath.geometry import Rotation3d, Transform3d, Translation3d
 
@@ -17,9 +19,30 @@ logger = logging.getLogger(__name__)
 
 
 class OpenCVHelp:
+
     @staticmethod
-    def getMinAreaRect(points: np.ndarray) -> cv.RotatedRect:
-        return cv.RotatedRect(*cv.minAreaRect(points))
+    def drawTags(frame: np.ndarray, tags: list[depthai.AprilTag], color: tuple[int, int, int]):
+        def to_int(tag):
+            return (int(tag.x), int(tag.y))
+        for tag in tags:
+            top_left = to_int(tag.topLeft)
+            top_right = to_int(tag.topRight)
+            bottom_right = to_int(tag.bottomRight)
+            bottom_left = to_int(tag.bottomLeft)
+
+            center = (int((top_left[0] + bottom_right[0]) / 2), int((top_left[1] + bottom_right[1]) / 2))
+
+            cv2.line(frame, top_left, top_right, color, 2, cv2.LINE_AA, 0)
+            cv2.line(frame, top_right,bottom_right, color, 2, cv2.LINE_AA, 0)
+            cv2.line(frame, bottom_right,bottom_left, color, 2, cv2.LINE_AA, 0)
+            cv2.line(frame, bottom_left,top_left, color, 2, cv2.LINE_AA, 0)
+
+            cv2.putText(frame, str(tag.id), center, cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3)
+
+
+    @staticmethod
+    def getMinAreaRect(points: np.ndarray) -> cv2.RotatedRect:
+        return cv2.RotatedRect(*cv2.minAreaRect(points))
 
     @staticmethod
     def translationNWUtoEDN(trl: Translation3d) -> Translation3d:
@@ -98,7 +121,7 @@ class OpenCVHelp:
             ]
         )
 
-        pts, _ = cv.projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs)
+        pts, _ = cv2.projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs)
         return pts
 
     @staticmethod
@@ -210,17 +233,17 @@ class OpenCVHelp:
         objectMat = np.array(OpenCVHelp.translationToTVec(modelTrls))
 
         alt: Transform3d | None = None
-        reprojectionError: cv.typing.MatLike | None = None
+        reprojectionError: cv2.typing.MatLike | None = None
         best: Transform3d = Transform3d()
 
         for tries in range(2):
             # calc rvecs/tvecs and associated reprojection error from image points
-            retval, rvecs, tvecs, reprojectionError = cv.solvePnPGeneric(
+            retval, rvecs, tvecs, reprojectionError = cv2.solvePnPGeneric(
                 objectMat,
                 imagePoints,
                 cameraMatrix,
                 distCoeffs,
-                flags=cv.SOLVEPNP_IPPE_SQUARE,
+                flags=cv2.SOLVEPNP_IPPE_SQUARE,
             )
 
             # convert to wpilib coordinates
@@ -297,8 +320,8 @@ class OpenCVHelp:
 
         objectMat = np.array(OpenCVHelp.translationToTVec(modelTrls))
 
-        retval, rvecs, tvecs, reprojectionError = cv.solvePnPGeneric(
-            objectMat, imagePoints, cameraMatrix, distCoeffs, flags=cv.SOLVEPNP_SQPNP
+        retval, rvecs, tvecs, reprojectionError = cv2.solvePnPGeneric(
+            objectMat, imagePoints, cameraMatrix, distCoeffs, flags=cv2.SOLVEPNP_SQPNP
         )
 
         error = reprojectionError[0, 0]

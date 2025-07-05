@@ -59,7 +59,7 @@ class AprilTagPoseEstimation:
         visibleTags: list[depthai.AprilTag],
         layout: AprilTagFieldLayout,
         tagModel: TargetModel,
-        tagBlacklist: list[int]) -> PnpResult | None:
+        tagBlacklist: list[int] = []) -> PnpResult | None:
         """Performs solvePNP using 3d-2d point correspondences of visible AprilTags to estimate the
         field-to-camera transformation. If only one tag is visible, the result may have an alternate
         solution.
