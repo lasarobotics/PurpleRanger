@@ -7,6 +7,7 @@ import logging
 import argparse
 import threading
 import math
+import numpy as np
 
 import ntcore
 from wpiutil import wpistruct
@@ -152,7 +153,7 @@ class Basalt(Pipeline):
 
             while p.isRunning():
                 while not self.stop_event.is_set():
-                    if not transform_queue.has():
+                   if not transform_queue.has():
                         time.sleep(WAIT_TIME)
                         continue
 
