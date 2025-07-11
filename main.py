@@ -53,7 +53,7 @@ def generate_video_feed():
             (flag, encoded_image) = cv2.imencode(".jpg", variables.video_frame)
             # ensure the frame was successfully encoded
             if not flag:
-                logging.debug("Video frame encoding failure!")
+                logging.error("Video frame encoding failure!")
                 continue
 
         # yield the output frame in the byte format
@@ -72,7 +72,7 @@ def video_feed():
 def sigint_handler(sig, frame):
     video_feed_stop_event.set()
     nt_instance = ntcore.NetworkTableInstance.getDefault()
-    nt_listener_handles = pipeline.exit()
+    pipeline.exit()
     logging.info("Exiting...")
     if nt_listener_handles is not None:
         for listener_handle in nt_listener_handles:
@@ -87,7 +87,7 @@ if __name__ ==  "__main__":
     # Init argparse
     parser = argparse.ArgumentParser(
         prog="PurpleRanger",
-        description="Publish pose data from DepthAI Basalt VIO",
+        description="Use OAK-D cameras for FRC",
         epilog=epilog,
         formatter_class=argparse.RawTextHelpFormatter
     )
@@ -126,7 +126,6 @@ if __name__ ==  "__main__":
 
     # Set tag map path
     if args.tag_map:
-        spectacle.config["AprilTagMapPath"] = args.tag_map
         logging.info("Using AprilTag map at " + args.tag_map)
     else:
         logging.info("No AprilTag map provided, not using AprilTags!")
@@ -140,10 +139,10 @@ if __name__ ==  "__main__":
 
     # Select pipeline
     match args.pipeline:
-        case "object":
-            pipeline = ObjectTracker()
         case "vio":
             pipeline = Basalt(table)
+        case "object":
+            pipeline = ObjectTracker()
         case "apriltag2d":
             pipeline = AprilTag2D()
         case "apriltag3d":
@@ -151,9 +150,14 @@ if __name__ ==  "__main__":
         case _:
             pass
 
+    # Create listeners for NT4 config entries
+    nt_listener_handles = []
+    entries = pipeline.get_config_entries()
+    for entry in entries:
+        nt_listener_handles.append(nt_instance.addListener(entry, ntcore.EventFlags.kValueAll, pipeline.on_config_change))
+
     # Start selected pipeline
     pipeline.start()
 
     # Start web server
-    app.run(host="localhost", port=8080, debug=False, threaded=True, use_reloader=False)
-
+    app.run(host="localhost", port=8080, debug=False, threaded=False, use_reloader=False)

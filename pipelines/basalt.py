@@ -17,37 +17,18 @@ import depthai
 import variables
 from .pipeline import Pipeline
 
-WAIT_TIME = 0.005
-
-# Config variables
-config = {
-    "AutoExposure": True,
-    "DotProjectorIntensity": 0.0,
-    "IRFloodlightIntensity": 0.0,
-    "AprilTagMapPath": "",
-}
-
 
 class Basalt(Pipeline):
     def __init__(self, table: ntcore.NetworkTable):
+        self.config = {
+            "AutoExposure": True,
+            "DotProjectorIntensity": 0.0,
+            "IRFloodlightIntensity": 0.0,
+            "AprilTagMapPath": "",
+        }
         self.stop_event = threading.Event()
         self.__nt_init(table)
         self.stop_event.clear()
-
-
-    def __on_config_change(event: ntcore.Event):
-        """NT4 config change callback
-
-        Stops Basalt VIO session, updates config, and restarts session
-
-        Args:
-            event (ntcore.Event): NT4 event
-        """
-
-        print("Config changed!")
-        self.stop()
-        config = super()._update_config(config, event)
-        self.start()
 
 
     def __nt_init(self, table: ntcore.NetworkTable):
@@ -59,27 +40,26 @@ class Basalt(Pipeline):
         self.pose_publisher = table.getStructTopic("Pose", Pose3d).publish(ntcore.PubSubOptions(keepDuplicates=True, sendAll=True))
 
         # Create NT4 config entries
-        topics = list(config.keys())
-        auto_exposure_entry = table.getBooleanTopic(topics[0]).getEntry(config[topics[0]])
-        auto_exposure_entry.setDefault(config[topics[0]])
+        topics = list(self.config.keys())
+        auto_exposure_entry = table.getBooleanTopic(topics[0]).getEntry(self.config[topics[0]])
+        auto_exposure_entry.setDefault(self.config[topics[0]])
         time.sleep(1)
-        dot_projector_intensity_entry = table.getDoubleTopic(topics[1]).getEntry(config[topics[1]])
-        dot_projector_intensity_entry.setDefault(config[topics[1]])
+        dot_projector_intensity_entry = table.getDoubleTopic(topics[1]).getEntry(self.config[topics[1]])
+        dot_projector_intensity_entry.setDefault(self.config[topics[1]])
         time.sleep(1)
-        ir_floodlight_intensity_entry = table.getDoubleTopic(topics[2]).getEntry(config[topics[2]])
-        ir_floodlight_intensity_entry.setDefault(config[topics[2]])
+        ir_floodlight_intensity_entry = table.getDoubleTopic(topics[2]).getEntry(self.config[topics[2]])
+        ir_floodlight_intensity_entry.setDefault(self.config[topics[2]])
         time.sleep(1)
-        apriltag_map_path_entry = table.getStringTopic(topics[3]).getEntry(config[topics[3]])
-        apriltag_map_path_entry.setDefault(config[topics[3]])
+        apriltag_map_path_entry = table.getStringTopic(topics[3]).getEntry(self.config[topics[3]])
+        apriltag_map_path_entry.setDefault(self.config[topics[3]])
         time.sleep(1)
 
-        # Bind listener callback to subscribers
-        self.nt_listener_handles = []
-        self.nt_listener_handles.append(nt_instance.addListener(auto_exposure_entry, ntcore.EventFlags.kValueAll, self.__on_config_change))
-        self.nt_listener_handles.append(nt_instance.addListener(dot_projector_intensity_entry, ntcore.EventFlags.kValueAll, self.__on_config_change))
-        self.nt_listener_handles.append(nt_instance.addListener(ir_floodlight_intensity_entry, ntcore.EventFlags.kValueAll, self.__on_config_change))
-        self.nt_listener_handles.append(nt_instance.addListener(apriltag_map_path_entry, ntcore.EventFlags.kValueAll, self.__on_config_change))
-
+        # Put entries in a list
+        self.config_entries = []
+        self.config_entries.append(auto_exposure_entry)
+        self.config_entries.append(dot_projector_intensity_entry)
+        self.config_entries.append(ir_floodlight_intensity_entry)
+        self.config_entries.append(apriltag_map_path_entry)
 
     def __session(self):
         # Create pipeline
@@ -90,8 +70,8 @@ class Basalt(Pipeline):
             logging.info(device.getDeviceName())
 
             if "OAK-D-PRO" in device.getDeviceName():
-                device.setIrLaserDotProjectorIntensity(config["DotProjectorIntensity"])
-                device.setIrFloodLightIntensity(config["IRFloodlightIntensity"])
+                device.setIrLaserDotProjectorIntensity(self.config["DotProjectorIntensity"])
+                device.setIrFloodLightIntensity(self.config["IRFloodlightIntensity"])
 
             fps = 120
             frame_width = 1280
@@ -149,7 +129,7 @@ class Basalt(Pipeline):
             # Run pipeline
             p.start()
             logging.info("Basalt VIO initialised")
-
+            logging.info("Config - " + str(self.config))
             while p.isRunning():
                 while not self.stop_event.is_set():
                     if not transform_queue.has():
@@ -193,7 +173,10 @@ class Basalt(Pipeline):
         time.sleep(1)
 
 
+    def get_config_entries(self) -> list[ntcore.NetworkTableEntry]:
+        return self.config_entries
+
+
     def exit(self):
         self.stop()
-        return self.nt_listener_handles
 
