@@ -41,17 +41,25 @@ class AprilTag3D(Pipeline):
         with depthai.Pipeline() as p:
             device = p.getDefaultDevice()
             calib = device.readCalibration()
+
             frame_width = 1280
             frame_height = 800
+
             if "OAK-D-LITE" in device.getDeviceName():
                 frame_width = 640
                 frame_height = 480
+
+            # Create nodes
             left: depthai.node.Camera = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B)
             right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C)
             left_apriltag_node = p.create(depthai.node.AprilTag)
             right_apriltag_node = p.create(depthai.node.AprilTag)
+
+            # Link nodes
             left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.BGR888p).link(left_apriltag_node.inputImage)
             right.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.BGR888p).link(right_apriltag_node.inputImage)
+
+            # Create output queues
             passthrough_output_queue = left_apriltag_node.passthroughInputImage.createOutputQueue()
             left_output_queue = left_apriltag_node.out.createOutputQueue()
             right_output_queue = right_apriltag_node.out.createOutputQueue()
