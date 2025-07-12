@@ -8,14 +8,19 @@ import argparse
 import threading
 import math
 
+import numpy as np
+
 import ntcore
 from wpiutil import wpistruct
+from robotpy_apriltag import AprilTagField, AprilTagFieldLayout
 from wpimath.geometry import Pose3d, Translation3d, Rotation3d, Quaternion
 
 import depthai
 
 import variables
 from .pipeline import Pipeline
+from utils.apriltag import TargetModel
+from utils.nodes import TagLandmarkEstimator
 
 
 class Basalt(Pipeline):
@@ -66,8 +71,11 @@ class Basalt(Pipeline):
         with depthai.Pipeline() as p:
             self.status_publisher.set(False)
             device = p.getDefaultDevice()
+            calib = device.readCalibration()
             device.setLogLevel(depthai.LogLevel.DEBUG)
             logging.info(device.getDeviceName())
+
+            field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2025ReefscapeWelded)
 
             if "OAK-D-PRO" in device.getDeviceName():
                 device.setIrLaserDotProjectorIntensity(self.config["DotProjectorIntensity"])
@@ -82,9 +90,18 @@ class Basalt(Pipeline):
                 frame_width = 640
                 frame_height = 480
 
+            landmark = depthai.Landmark()
+            logging.debug(str(landmark))
+
+            # Get intrisics matrix and distortion coefficients
+            camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height)),
+            dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B))
+
             # Define sources and output nodes
             left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
             right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C, sensorFps=fps)
+            apriltag = p.create(depthai.node.AprilTag)
+            tag_estimator = p.create(TagLandmarkEstimator)
             imu = p.create(depthai.node.IMU)
             odom = p.create(depthai.node.BasaltVIO)
             slam = p.create(depthai.node.RTABMapSLAM)
@@ -92,7 +109,9 @@ class Basalt(Pipeline):
             params = {
                 "RGBD/CreateOccupancyGrid": "true",
                 "Grid/3D": "true",
-                "Rtabmap/SaveWMState": "true"
+                "Rtabmap/SaveWMState": "true",
+                "RGBD/MarkerDetection": "true",
+                "Optimizer/PriorsIgnored": "false"
             }
             slam.setParams(params)
 
@@ -100,6 +119,12 @@ class Basalt(Pipeline):
             imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
+
+            # Setup tag estimator
+            tag_estimator.setCameraExtrinsics(camera_matrix)
+            tag_estimator.setDistortionCoefficients(dist_coeffs)
+            tag_estimator.setTargetModel(TargetModel.AprilTag36h11())
+            tag_estimator.setAprilTagFieldLayout(field_layout)
 
             # Setup stereo
             stereo.setExtendedDisparity(False)
@@ -110,14 +135,16 @@ class Basalt(Pipeline):
             stereo.initialConfig.setLeftRightCheckThreshold(10)
             stereo.setDepthAlign(depthai.CameraBoardSocket.CAM_B)
 
-
             # Link nodes
             left.requestOutput((frame_width, frame_height)).link(stereo.left)
             right.requestOutput((frame_width, frame_height)).link(stereo.right)
+            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.BGR888p).link(apriltag.inputImage)
+            apriltag.out.link(tag_estimator.tags)
             stereo.syncedLeft.link(odom.left)
             stereo.syncedRight.link(odom.right)
             stereo.depth.link(slam.depth)
             stereo.rectifiedLeft.link(slam.rect)
+            tag_estimator.landmarks.link(slam.landmarks)
             imu.out.link(odom.imu)
             odom.transform.link(slam.odom)
 
