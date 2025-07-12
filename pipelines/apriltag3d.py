@@ -49,15 +49,21 @@ class AprilTag3D(Pipeline):
                 frame_width = 640
                 frame_height = 480
 
+            left_camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height))
+            left_dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B))
+
+            right_camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_C, frame_width, frame_height))
+            right_dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_C))
+
             # Create nodes
-            left: depthai.node.Camera = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B)
+            left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B)
             right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C)
             left_apriltag_node = p.create(depthai.node.AprilTag)
             right_apriltag_node = p.create(depthai.node.AprilTag)
 
             # Link nodes
-            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.BGR888p).link(left_apriltag_node.inputImage)
-            right.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.BGR888p).link(right_apriltag_node.inputImage)
+            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(left_apriltag_node.inputImage)
+            right.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(right_apriltag_node.inputImage)
 
             # Create output queues
             passthrough_output_queue = left_apriltag_node.passthroughInputImage.createOutputQueue()
@@ -82,16 +88,16 @@ class AprilTag3D(Pipeline):
                     OpenCVHelp.drawTags(frame, left_tags, self.color)
 
                     left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(
-                        np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height)),
-                        np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B)),
+                        left_camera_matrix,
+                        left_dist_coeffs,
                         left_tags,
                         field_layout,
                         TargetModel.AprilTag36h11()
                     )
 
                     right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(
-                        np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_C, frame_width, frame_height)),
-                        np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_C)),
+                        right_camera_matrix,
+                        right_dist_coeffs,
                         right_tags,
                         field_layout,
                         TargetModel.AprilTag36h11()

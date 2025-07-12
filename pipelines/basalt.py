@@ -90,18 +90,14 @@ class Basalt(Pipeline):
                 frame_width = 640
                 frame_height = 480
 
-            landmark = depthai.Landmark()
-            logging.debug(str(landmark))
-
             # Get intrisics matrix and distortion coefficients
-            camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height)),
+            camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height))
             dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B))
 
             # Define sources and output nodes
             left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
             right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C, sensorFps=fps)
             apriltag = p.create(depthai.node.AprilTag)
-            tag_estimator = p.create(TagLandmarkEstimator)
             imu = p.create(depthai.node.IMU)
             odom = p.create(depthai.node.BasaltVIO)
             slam = p.create(depthai.node.RTABMapSLAM)
@@ -114,6 +110,7 @@ class Basalt(Pipeline):
                 "Optimizer/PriorsIgnored": "false"
             }
             slam.setParams(params)
+            tag_estimator = TagLandmarkEstimator()
 
             # Setup IMU
             imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
@@ -138,7 +135,7 @@ class Basalt(Pipeline):
             # Link nodes
             left.requestOutput((frame_width, frame_height)).link(stereo.left)
             right.requestOutput((frame_width, frame_height)).link(stereo.right)
-            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.BGR888p).link(apriltag.inputImage)
+            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(apriltag.inputImage)
             apriltag.out.link(tag_estimator.tags)
             stereo.syncedLeft.link(odom.left)
             stereo.syncedRight.link(odom.right)
@@ -151,7 +148,6 @@ class Basalt(Pipeline):
             # Create output queues
             passthrough_queue = odom.passthrough.createOutputQueue()
             transform_queue = slam.transform.createOutputQueue()
-            imu_queue = imu.out.createOutputQueue()
 
             # Run pipeline
             p.start()
@@ -159,12 +155,16 @@ class Basalt(Pipeline):
             logging.info("Config - " + str(self.config))
             while p.isRunning():
                 while not self.stop_event.is_set():
+                    #pass
                     if not transform_queue.has():
                         time.sleep(WAIT_TIME)
                         continue
 
-                    imgFrame = passthrough_queue.get()
+                    image = passthrough_queue.get()
                     transform_message = transform_queue.get()
+                    assert isinstance(image, depthai.ImgFrame), "Expected ImgFrame"
+                    assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
+
                     temp_point = transform_message.getTranslation()
                     temp_quaternion = transform_message.getQuaternion()
 
@@ -177,12 +177,10 @@ class Basalt(Pipeline):
                     self.pose_publisher.set(pose)
                     logging.debug(str(pose))
 
-                    frame = imgFrame.getCvFrame()
+                    frame = image.getCvFrame()
 
                     with variables.video_lock:
                         variables.video_frame = frame.copy()
-
-                    time.sleep(WAIT_TIME)
 
                 p.stop()
                 logging.info("Basalt VIO stopped")

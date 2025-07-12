@@ -1,10 +1,13 @@
+import logging
+import marshal
+
 import depthai
 
 import numpy as np
 
 from robotpy_apriltag import AprilTagFieldLayout
 
-from utils.apriltag import TargetModel
+from utils.apriltag import OpenCVHelp, TargetModel, TagCorner
 
 class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
     def __init__(self):
@@ -12,16 +15,15 @@ class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
         self.tags = self.createInput()
         self.landmarks = self.createOutput()
 
-    def onStart(self):
-        pass
-
     def run(self):
         while self.isRunning():
             input_buffer = self.tags.get() # Get a buffer from the input queue
-            output_buffer = depthai.Buffer()
-            landmarks = []
-            for target in input_buffer:
-                if target.id in tagBlacklist: continue
+            output_buffer = depthai.Landmarks()
+            visible_landmarks = []
+            self.tagBlacklist = []
+
+            for target in input_buffer.aprilTags:
+                if target.id in self.tagBlacklist: continue
                 maybePose = self.fieldLayout.getTagPose(target.id)
                 if maybePose:
                     corners = [
@@ -31,11 +33,24 @@ class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
                         TagCorner(target.bottomLeft.x, target.bottomLeft.y)
                     ]
                     points = OpenCVHelp.cornersToPoints(corners)
-                    camToTag = OpenCVHelp.solvePNP_Square(self.cameraMatrix, self.distCoeffs, self.targetModel.getVertices(), points)
-                    transform = TransformData(camToTag.best.translation().X(), camToTag.best.translation().Y(), camToTag.best.translation().Z(), camToTag.best.rotation().X(), camToTag.best.rotation().Y(), camToTag.best.rotation.Z())
-                    landmarks.append(depthai.Landmark(target.id, self.size, transform))
+                    camToTag = OpenCVHelp.solvePNP_Square(self.cameraMatrix, self.distCoeffs, self.targetModel.getVertices(), points)\
 
-            output_buffer.setData(landmarks)
+                    landmark = depthai.Landmark()
+                    landmark.id = target.id
+                    landmark.size = self.size
+                    landmark.translation.x = camToTag.best.translation().X()
+                    landmark.translation.y = camToTag.best.translation().Y()
+                    landmark.translation.z = camToTag.best.translation().Z()
+                    landmark.quaternion.qx = camToTag.best.rotation().getQuaternion().X()
+                    landmark.quaternion.qy = camToTag.best.rotation().getQuaternion().Y()
+                    landmark.quaternion.qz = camToTag.best.rotation().getQuaternion().Z()
+                    landmark.quaternion.qw = camToTag.best.rotation().getQuaternion().W()
+
+                    visible_landmarks.append(landmark)
+
+            output_buffer.setTimestamp(input_buffer.getTimestamp())
+            output_buffer.setTimestampDevice(input_buffer.getTimestampDevice())
+            output_buffer.landmarks = visible_landmarks
             self.landmarks.send(output_buffer)
 
 
@@ -54,3 +69,7 @@ class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
 
     def setAprilTagFieldLayout(self, fieldLayout: AprilTagFieldLayout):
         self.fieldLayout = fieldLayout
+
+
+    def setTagBlacklist(self, blacklist: list[int]):
+        self.tagBlacklist = blacklist
