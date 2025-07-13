@@ -14,13 +14,14 @@ class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
         super().__init__()
         self.tags = self.createInput()
         self.landmarks = self.createOutput()
+        self.size = 6.5 * 0.0254
+        self.tagBlacklist = []
 
     def run(self):
         while self.isRunning():
             input_buffer = self.tags.get() # Get a buffer from the input queue
             output_buffer = depthai.Landmarks()
             visible_landmarks = []
-            self.tagBlacklist = []
 
             for target in input_buffer.aprilTags:
                 if target.id in self.tagBlacklist: continue
@@ -51,6 +52,7 @@ class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
             output_buffer.setTimestamp(input_buffer.getTimestamp())
             output_buffer.setTimestampDevice(input_buffer.getTimestampDevice())
             output_buffer.landmarks = visible_landmarks
+            logging.debug(str(output_buffer))
             self.landmarks.send(output_buffer)
 
 
