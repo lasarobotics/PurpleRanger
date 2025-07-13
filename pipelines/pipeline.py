@@ -14,7 +14,7 @@ class Pipeline:
         return
 
     def get_config_entries(self) -> list[ntcore.NetworkTableEntry]:
-        return
+        return []
 
     def on_config_change(self, event: ntcore.Event):
         """NT4 config change callback
