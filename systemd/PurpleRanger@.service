@@ -1,0 +1,11 @@
+[Unit]
+Description=PurpleRanger
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=%h/PurpleRanger/.venv/bin/python %h/PurpleRanger/main.py --mode robot --pipeline %i
+Restart=always
+
+[Install]
+WantedBy=default.target
