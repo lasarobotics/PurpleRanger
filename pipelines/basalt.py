@@ -75,6 +75,9 @@ class Basalt(Pipeline):
             device.setLogLevel(depthai.LogLevel.DEBUG)
             logging.info(device.getDeviceName())
 
+            device.setLogLevel(depthai.LogLevel.DEBUG)
+            device.setLogOutputLevel(depthai.LogLevel.DEBUG)
+
             field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2025ReefscapeWelded)
 
             if "OAK-D-PRO" in device.getDeviceName():
