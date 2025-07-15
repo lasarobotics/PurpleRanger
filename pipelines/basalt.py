@@ -117,8 +117,10 @@ class Basalt(Pipeline):
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
+            slam.setUseFeatures(False)
+
             # Setup tag estimator
-            tag_estimator.setCameraExtrinsics(camera_matrix)
+            tag_estimator.setCameraIntrinsics(camera_matrix)
             tag_estimator.setDistortionCoefficients(dist_coeffs)
             tag_estimator.setTargetModel(TargetModel.AprilTag36h11())
             tag_estimator.setAprilTagFieldLayout(field_layout)
