@@ -110,14 +110,13 @@ class Basalt(Pipeline):
                 "Optimizer/PriorsIgnored": "false"
             }
             slam.setParams(params)
+            slam.setUseLandmarks(True)
             tag_estimator = TagLandmarkEstimator()
 
             # Setup IMU
             imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
-
-            slam.setUseFeatures(False)
 
             # Setup tag estimator
             tag_estimator.setCameraIntrinsics(camera_matrix)
@@ -157,11 +156,6 @@ class Basalt(Pipeline):
             logging.info("Config - " + str(self.config))
             while p.isRunning():
                 while not self.stop_event.is_set():
-                    #pass
-                    if not transform_queue.has():
-                        time.sleep(WAIT_TIME)
-                        continue
-
                     image = passthrough_queue.get()
                     transform_message = transform_queue.get()
                     assert isinstance(image, depthai.ImgFrame), "Expected ImgFrame"

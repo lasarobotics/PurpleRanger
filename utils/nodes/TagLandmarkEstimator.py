@@ -6,7 +6,7 @@ import depthai
 import numpy as np
 
 from robotpy_apriltag import AprilTagFieldLayout
-from wpimath.geometry import Transform3d
+from wpimath.geometry import Transform3d, Pose3d
 
 from utils.apriltag import OpenCVHelp, TargetModel, TagCorner, AprilTagPoseEstimation
 
@@ -25,26 +25,27 @@ class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
             self.tagBlacklist = []
 
             result = AprilTagPoseEstimation.estimateCamPosePNP(self.cameraMatrix, self.distCoeffs, input_buffer.aprilTags, self.fieldLayout, self.targetModel)
+            if result:
+                for tagID in result.fiducialIDsUsed:
+                    result_pose = Pose3d(result.best.translation(), result.best.rotation())
+                    camToTag = Transform3d(result_pose, self.fieldLayout.getTagPose(tagID))
+                    landmark = depthai.Landmark()
+                    landmark.id = tagID
+                    landmark.size = self.size
+                    landmark.translation.x = camToTag.translation().X()
+                    landmark.translation.y = camToTag.translation().Y()
+                    landmark.translation.z = camToTag.translation().Z()
+                    landmark.quaternion.qx = camToTag.rotation().getQuaternion().X()
+                    landmark.quaternion.qy = camToTag.rotation().getQuaternion().Y()
+                    landmark.quaternion.qz = camToTag.rotation().getQuaternion().Z()
+                    landmark.quaternion.qw = camToTag.rotation().getQuaternion().W()
 
-            for tagID in result.fiducialIDsUsed:
-                camToTag = Transform3d(result.best, self.fieldLayout.getTagPose(tagID))
-                landmark = depthai.Landmark()
-                landmark.id = tagID
-                landmark.size = self.size
-                landmark.translation.x = camToTag.translation().X()
-                landmark.translation.y = camToTag.translation().Y()
-                landmark.translation.z = camToTag.translation().Z()
-                landmark.quaternion.qx = camToTag.rotation().getQuaternion().X()
-                landmark.quaternion.qy = camToTag.rotation().getQuaternion().Y()
-                landmark.quaternion.qz = camToTag.rotation().getQuaternion().Z()
-                landmark.quaternion.qw = camToTag.rotation().getQuaternion().W()
-
-                visible_landmarks.append(landmark)
+                    visible_landmarks.append(landmark)
 
             output_buffer.setTimestamp(input_buffer.getTimestamp())
             output_buffer.setTimestampDevice(input_buffer.getTimestampDevice())
             output_buffer.landmarks = visible_landmarks
-            logging.debug(str(output_buffer))
+            #logging.debug(str(output_buffer))
             self.landmarks.send(output_buffer)
 
 

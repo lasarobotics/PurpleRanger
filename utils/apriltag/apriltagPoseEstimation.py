@@ -114,16 +114,10 @@ class AprilTagPoseEstimation:
             if not camToTag:
                 return None
 
-            if landmarks:
-                bestPose = knownTags[0].pose.transformBy(camToTag.best)
-                altPose = Pose3d()
-                if camToTag.ambiguity != 0:
-                    altPose = knownTags[0].pose.transformBy(camToTag.alt)
-            else:
-                bestPose = knownTags[0].pose.transformBy(camToTag.best.inverse())
-                altPose = Pose3d()
-                if camToTag.ambiguity != 0:
-                    altPose = knownTags[0].pose.transformBy(camToTag.alt.inverse())
+            bestPose = knownTags[0].pose.transformBy(camToTag.best.inverse())
+            altPose = Pose3d()
+            if camToTag.ambiguity != 0:
+                altPose = knownTags[0].pose.transformBy(camToTag.alt.inverse())
 
             o = Pose3d()
             result = PnpResult(
