@@ -111,7 +111,7 @@ class Basalt(Pipeline):
             }
             slam.setParams(params)
             slam.setUseLandmarks(True)
-            tag_estimator = TagLandmarkEstimator()
+            landmark_estimator = TagLandmarkEstimator()
 
             # Setup IMU
             imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
@@ -119,10 +119,10 @@ class Basalt(Pipeline):
             imu.setMaxBatchReports(10)
 
             # Setup tag estimator
-            tag_estimator.setCameraIntrinsics(camera_matrix)
-            tag_estimator.setDistortionCoefficients(dist_coeffs)
-            tag_estimator.setTargetModel(TargetModel.AprilTag36h11())
-            tag_estimator.setAprilTagFieldLayout(field_layout)
+            landmark_estimator.setCameraIntrinsics(camera_matrix)
+            landmark_estimator.setDistortionCoefficients(dist_coeffs)
+            landmark_estimator.setTargetModel(TargetModel.AprilTag36h11())
+            landmark_estimator.setAprilTagFieldLayout(field_layout)
 
             # Setup stereo
             stereo.setExtendedDisparity(False)
@@ -137,12 +137,12 @@ class Basalt(Pipeline):
             left.requestOutput((frame_width, frame_height)).link(stereo.left)
             right.requestOutput((frame_width, frame_height)).link(stereo.right)
             left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(apriltag.inputImage)
-            apriltag.out.link(tag_estimator.tags)
+            apriltag.out.link(landmark_estimator.tags)
             stereo.syncedLeft.link(odom.left)
             stereo.syncedRight.link(odom.right)
             stereo.depth.link(slam.depth)
             stereo.rectifiedLeft.link(slam.rect)
-            tag_estimator.landmarks.link(slam.landmarks)
+            landmark_estimator.landmarks.link(slam.landmarks)
             imu.out.link(odom.imu)
             odom.transform.link(slam.odom)
 
@@ -154,32 +154,31 @@ class Basalt(Pipeline):
             p.start()
             logging.info("Basalt VIO initialised")
             logging.info("Config - " + str(self.config))
-            while p.isRunning():
-                while not self.stop_event.is_set():
-                    image = passthrough_queue.get()
-                    transform_message = transform_queue.get()
-                    assert isinstance(image, depthai.ImgFrame), "Expected ImgFrame"
-                    assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
+            while p.isRunning() and not self.stop_event.is_set():
+                image = passthrough_queue.get()
+                transform_message = transform_queue.get()
+                assert isinstance(image, depthai.ImgFrame), "Expected ImgFrame"
+                assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
 
-                    temp_point = transform_message.getTranslation()
-                    temp_quaternion = transform_message.getQuaternion()
+                temp_point = transform_message.getTranslation()
+                temp_quaternion = transform_message.getQuaternion()
 
-                    pose = Pose3d(
-                        Translation3d(temp_point.x, temp_point.y, temp_point.z),
-                        Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
-                    )
+                pose = Pose3d(
+                    Translation3d(temp_point.x, temp_point.y, temp_point.z),
+                    Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
+                )
 
-                    self.status_publisher.set(True)
-                    self.pose_publisher.set(pose)
-                    logging.debug(str(pose))
+                self.status_publisher.set(True)
+                self.pose_publisher.set(pose)
+                logging.debug(str(pose))
 
-                    frame = image.getCvFrame()
+                frame = image.getCvFrame()
 
-                    with variables.video_lock:
-                        variables.video_frame = frame.copy()
+                with variables.video_lock:
+                    variables.video_frame = frame.copy()
 
-                p.stop()
-                logging.info("Basalt VIO stopped")
+            p.stop()
+            logging.info("Basalt VIO stopped")
 
 
     def start(self):

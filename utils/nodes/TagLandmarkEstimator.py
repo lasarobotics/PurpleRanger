@@ -28,7 +28,7 @@ class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
             if result:
                 for tagID in result.fiducialIDsUsed:
                     result_pose = Pose3d(result.best.translation(), result.best.rotation())
-                    camToTag = Transform3d(result_pose, self.fieldLayout.getTagPose(tagID))
+                    camToTag = Transform3d(self.fieldLayout.getTagPose(tagID), result_pose)
                     landmark = depthai.Landmark()
                     landmark.id = tagID
                     landmark.size = self.size
@@ -45,7 +45,6 @@ class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
             output_buffer.setTimestamp(input_buffer.getTimestamp())
             output_buffer.setTimestampDevice(input_buffer.getTimestampDevice())
             output_buffer.landmarks = visible_landmarks
-            #logging.debug(str(output_buffer))
             self.landmarks.send(output_buffer)
 
 
