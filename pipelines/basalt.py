@@ -118,7 +118,7 @@ class Basalt(Pipeline):
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
-            # Setup tag estimator
+            # Setup landmark estimator
             landmark_estimator.setCameraIntrinsics(camera_matrix)
             landmark_estimator.setDistortionCoefficients(dist_coeffs)
             landmark_estimator.setTargetModel(TargetModel.AprilTag36h11())
@@ -147,18 +147,24 @@ class Basalt(Pipeline):
             odom.transform.link(slam.odom)
 
             # Create output queues
-            passthrough_queue = odom.passthrough.createOutputQueue()
+            image_queue = odom.passthrough.createOutputQueue()
             transform_queue = slam.transform.createOutputQueue()
+            landmark_queue = landmark_estimator.landmarks.createOutputQueue()
+            passthrough_queue = slam.passthroughFeatures.createOutputQueue()
 
             # Run pipeline
             p.start()
             logging.info("Basalt VIO initialised")
             logging.info("Config - " + str(self.config))
             while p.isRunning() and not self.stop_event.is_set():
-                image = passthrough_queue.get()
+                image = image_queue.get()
                 transform_message = transform_queue.get()
+                landmark_message = landmark_queue.get()
                 assert isinstance(image, depthai.ImgFrame), "Expected ImgFrame"
                 assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
+                assert isinstance(landmark_message, depthai.Landmarks), "Expected Landmarks"
+
+                logging.debug(str(landmark_message))
 
                 temp_point = transform_message.getTranslation()
                 temp_quaternion = transform_message.getQuaternion()

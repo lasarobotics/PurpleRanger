@@ -10,7 +10,7 @@ from wpimath.geometry import Transform3d, Pose3d
 
 from utils.apriltag import OpenCVHelp, TargetModel, TagCorner, AprilTagPoseEstimation
 
-class TagLandmarkEstimator(depthai.node.ThreadedHostNode):
+class LandmarkEstimator(depthai.node.ThreadedHostNode):
     def __init__(self):
         super().__init__()
         self.tags = self.createInput()
