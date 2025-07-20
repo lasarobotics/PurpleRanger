@@ -20,7 +20,7 @@ import depthai
 import variables
 from .pipeline import Pipeline
 from utils.apriltag import TargetModel
-from utils.nodes import TagLandmarkEstimator
+from utils.nodes import LandmarkEstimator
 
 
 class Basalt(Pipeline):
@@ -111,12 +111,11 @@ class Basalt(Pipeline):
                 "Rtabmap/SaveWMState": "true",
                 "RGBD/MarkerDetection": "true",
                 "Optimizer/PriorsIgnored": "false",
-
                 "Marker/Priors": "1 0 0 1 0 0 0"
             }
             slam.setParams(params)
             slam.setUseLandmarks(True)
-            landmark_estimator = TagLandmarkEstimator()
+            landmark_estimator = LandmarkEstimator()
 
             # Setup IMU
             imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
