@@ -111,7 +111,7 @@ class Basalt(Pipeline):
                 "Rtabmap/SaveWMState": "true",
                 "RGBD/MarkerDetection": "true",
                 "Optimizer/PriorsIgnored": "false",
-                "Marker/Priors": "1 0 0 1 0 0 0"
+                "Marker/Priors": "10 12.227305999999999 4.0259 0.308102 0 0 3.14159"
             }
             slam.setParams(params)
             slam.setUseLandmarks(True)
