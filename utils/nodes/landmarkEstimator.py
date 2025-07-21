@@ -6,10 +6,13 @@ import depthai
 import numpy as np
 
 from robotpy_apriltag import AprilTagFieldLayout
-from wpimath.geometry import Transform3d, Pose3d
+from wpimath.geometry import Transform3d, Pose3d, Translation3d
 
 import variables
 from utils.apriltag import OpenCVHelp, TargetModel, TagCorner, AprilTagPoseEstimation, Perspective
+
+translation_origin = Translation3d()
+rotation_covariance = 0.05
 
 class LandmarkEstimator(depthai.node.ThreadedHostNode):
     def __init__(self):
@@ -34,6 +37,16 @@ class LandmarkEstimator(depthai.node.ThreadedHostNode):
                 common_tags = list(set(left_estimate.fiducialIDsUsed) & set(right_estimate.fiducialIDsUsed))
                 for tagID in common_tags:
                     camToTag = Transform3d(pose, self.fieldLayout.getTagPose(tagID))
+                    distance = camToTag.translation().distance(translation_origin)
+                    covariance_matrix = [[0] * 6 for i in range(6)]
+                    translation_covariance = 0.01 * (distance ** 2) / len(common_tags)
+                    covariance_matrix[0][0] = translation_covariance
+                    covariance_matrix[1][1] = translation_covariance
+                    covariance_matrix[2][2] = translation_covariance
+                    covariance_matrix[3][3] = rotation_covariance
+                    covariance_matrix[4][4] = rotation_covariance
+                    covariance_matrix[5][5] = rotation_covariance
+                    logging.debug(str(covariance_matrix))
                     landmark = depthai.Landmark()
                     landmark.id = tagID
                     landmark.size = self.size
@@ -44,6 +57,7 @@ class LandmarkEstimator(depthai.node.ThreadedHostNode):
                     landmark.quaternion.qy = camToTag.rotation().getQuaternion().Y()
                     landmark.quaternion.qz = camToTag.rotation().getQuaternion().Z()
                     landmark.quaternion.qw = camToTag.rotation().getQuaternion().W()
+                    landmark.covariance = covariance_matrix
 
                     visible_landmarks.append(landmark)
 
