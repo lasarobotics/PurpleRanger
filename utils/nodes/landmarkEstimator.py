@@ -8,27 +8,32 @@ import numpy as np
 from robotpy_apriltag import AprilTagFieldLayout
 from wpimath.geometry import Transform3d, Pose3d
 
-from utils.apriltag import OpenCVHelp, TargetModel, TagCorner, AprilTagPoseEstimation
+import variables
+from utils.apriltag import OpenCVHelp, TargetModel, TagCorner, AprilTagPoseEstimation, Perspective
 
 class LandmarkEstimator(depthai.node.ThreadedHostNode):
     def __init__(self):
         super().__init__()
-        self.tags = self.createInput()
+        self.leftTags = self.createInput()
+        self.rightTags = self.createInput()
         self.landmarks = self.createOutput()
+        self.tagBlacklist = []
 
 
     def run(self):
         while self.isRunning():
-            input_buffer = self.tags.get() # Get a buffer from the input queue
+            left_buffer = self.leftTags.get() # Get a buffer from the input queue
+            right_buffer = self.rightTags.get()
             output_buffer = depthai.Landmarks()
             visible_landmarks = []
-            self.tagBlacklist = []
 
-            result = AprilTagPoseEstimation.estimateCamPosePNP(self.cameraMatrix, self.distCoeffs, input_buffer.aprilTags, self.fieldLayout, self.targetModel)
-            if result:
-                for tagID in result.fiducialIDsUsed:
-                    result_pose = Pose3d(result.best.translation(), result.best.rotation())
-                    camToTag = Transform3d(result_pose, self.fieldLayout.getTagPose(tagID))
+            left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(self.leftCameraMatrix, self.leftDistCoeffs, left_buffer.aprilTags, self.fieldLayout, self.targetModel)
+            right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(self.rightCameraMatrix, self.rightDistCoeffs, right_buffer.aprilTags, self.fieldLayout, self.targetModel)
+            if left_estimate and right_estimate:
+                pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, variables.baseline, Perspective.LEFT)
+                common_tags = list(set(left_estimate.fiducialIDsUsed) & set(right_estimate.fiducialIDsUsed))
+                for tagID in left_estimate.fiducialIDsUsed:
+                    camToTag = Transform3d(pose, self.fieldLayout.getTagPose(tagID))
                     landmark = depthai.Landmark()
                     landmark.id = tagID
                     landmark.size = self.size
@@ -42,28 +47,32 @@ class LandmarkEstimator(depthai.node.ThreadedHostNode):
 
                     visible_landmarks.append(landmark)
 
-            output_buffer.setTimestamp(input_buffer.getTimestamp())
-            output_buffer.setTimestampDevice(input_buffer.getTimestampDevice())
+            output_buffer.setTimestamp(left_buffer.getTimestamp())
+            output_buffer.setTimestampDevice(left_buffer.getTimestampDevice())
             output_buffer.landmarks = visible_landmarks
             self.landmarks.send(output_buffer)
 
 
-    def setCameraIntrinsics(self, cameraMatrix: np.ndarray):
+    def setCameraIntrinsics(self, leftCameraMatrix: np.ndarray, rightCameraMatrix: np.ndarray):
         """Set camera intrinsics matrix
 
         Args:
-            cameraMatrix (np.ndarray): Camera intrinsics matrix in opencv format
+            leftCameraMatrix (np.ndarray): Left camera intrinsics matrix in opencv format
+            rightCameraMatrix (np.ndarray): Right camera intrinsics matrix in opencv format
         """
-        self.cameraMatrix = cameraMatrix
+        self.leftCameraMatrix = leftCameraMatrix
+        self.rightCameraMatrix = rightCameraMatrix
 
 
-    def setDistortionCoefficients(self, distCoeffs: np.ndarray):
+    def setDistortionCoefficients(self, leftDistCoeffs: np.ndarray, rightDistCoeffs: np.ndarray):
         """Set camera distortion coefficients
 
         Args:
-            distCoeffs (np.ndarray): Camera distortion coefficient matrix in opencv format
+            leftDistCoeffs (np.ndarray): Left camera distortion coefficient matrix in opencv format
+            rightDistCoeffs (np.ndarray): Right camera distortion coefficient matrix in opencv format
         """
-        self.distCoeffs = distCoeffs
+        self.leftDistCoeffs = leftDistCoeffs
+        self.rightDistCoeffs = rightDistCoeffs
 
 
     def setTargetModel(self, targetModel: TargetModel):

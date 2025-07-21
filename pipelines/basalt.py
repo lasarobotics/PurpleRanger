@@ -79,12 +79,24 @@ class Basalt(Pipeline):
             device.setLogOutputLevel(depthai.LogLevel.DEBUG)
 
             field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2025ReefscapeWelded)
+            marker_priors = ""
+            for tag in field_layout.getTags():
+                marker_priors += " ".join([
+                    str(tag.ID),
+                    str(tag.pose.translation().X()),
+                    str(tag.pose.translation().Y()),
+                    str(tag.pose.translation().Z()),
+                    str(tag.pose.rotation().X()),
+                    str(tag.pose.rotation().Y()),
+                    str(tag.pose.rotation().Z()),
+                    "|"
+                ])
 
             if "OAK-D-PRO" in device.getDeviceName():
                 device.setIrLaserDotProjectorIntensity(self.config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(self.config["IRFloodlightIntensity"])
 
-            fps = 120
+            fps = 60
             frame_width = 1280
             frame_height = 800
 
@@ -94,13 +106,16 @@ class Basalt(Pipeline):
                 frame_height = 480
 
             # Get intrisics matrix and distortion coefficients
-            camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height))
-            dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B))
+            left_camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height))
+            left_dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B))
+            right_camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_C, frame_width, frame_height))
+            right_dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_C))
 
             # Define sources and output nodes
             left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B, sensorFps=fps)
             right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C, sensorFps=fps)
-            apriltag = p.create(depthai.node.AprilTag)
+            left_apriltag = p.create(depthai.node.AprilTag)
+            right_apriltag = p.create(depthai.node.AprilTag)
             imu = p.create(depthai.node.IMU)
             odom = p.create(depthai.node.BasaltVIO)
             slam = p.create(depthai.node.RTABMapSLAM)
@@ -111,7 +126,7 @@ class Basalt(Pipeline):
                 "Rtabmap/SaveWMState": "true",
                 "RGBD/MarkerDetection": "true",
                 "Optimizer/PriorsIgnored": "false",
-                "Marker/Priors": "10 12.227305999999999 4.0259 0.308102 0 0 3.14159"
+                "Marker/Priors": marker_priors
             }
             slam.setParams(params)
             slam.setUseLandmarks(True)
@@ -123,8 +138,8 @@ class Basalt(Pipeline):
             imu.setMaxBatchReports(10)
 
             # Setup landmark estimator
-            landmark_estimator.setCameraIntrinsics(camera_matrix)
-            landmark_estimator.setDistortionCoefficients(dist_coeffs)
+            landmark_estimator.setCameraIntrinsics(left_camera_matrix, right_camera_matrix)
+            landmark_estimator.setDistortionCoefficients(left_dist_coeffs, right_dist_coeffs)
             landmark_estimator.setTargetModel(TargetModel.AprilTag36h11())
             landmark_estimator.setAprilTagFieldLayout(field_layout)
 
@@ -140,8 +155,10 @@ class Basalt(Pipeline):
             # Link nodes
             left.requestOutput((frame_width, frame_height)).link(stereo.left)
             right.requestOutput((frame_width, frame_height)).link(stereo.right)
-            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(apriltag.inputImage)
-            apriltag.out.link(landmark_estimator.tags)
+            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(left_apriltag.inputImage)
+            right.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(right_apriltag.inputImage)
+            left_apriltag.out.link(landmark_estimator.leftTags)
+            right_apriltag.out.link(landmark_estimator.rightTags)
             stereo.syncedLeft.link(odom.left)
             stereo.syncedRight.link(odom.right)
             stereo.depth.link(slam.depth)
