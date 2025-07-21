@@ -19,7 +19,7 @@ import depthai
 
 import variables
 from .pipeline import Pipeline
-from utils.apriltag import TargetModel
+from utils.apriltag import TargetModel, OpenCVHelp
 from utils.nodes import LandmarkEstimator
 
 
@@ -72,11 +72,11 @@ class Basalt(Pipeline):
             self.status_publisher.set(False)
             device = p.getDefaultDevice()
             calib = device.readCalibration()
-            device.setLogLevel(depthai.LogLevel.DEBUG)
             logging.info(device.getDeviceName())
 
-            device.setLogLevel(depthai.LogLevel.DEBUG)
-            device.setLogOutputLevel(depthai.LogLevel.DEBUG)
+            if variables.trace:
+                device.setLogLevel(depthai.LogLevel.DEBUG)
+                device.setLogOutputLevel(depthai.LogLevel.DEBUG)
 
             field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2025ReefscapeWelded)
             marker_priors = ""
@@ -120,6 +120,7 @@ class Basalt(Pipeline):
             odom = p.create(depthai.node.BasaltVIO)
             slam = p.create(depthai.node.RTABMapSLAM)
             stereo = p.create(depthai.node.StereoDepth)
+            feature_tracker = p.create(depthai.node.FeatureTracker)
             params = {
                 "RGBD/CreateOccupancyGrid": "true",
                 "Grid/3D": "true",
@@ -129,6 +130,7 @@ class Basalt(Pipeline):
                 "Marker/Priors": marker_priors
             }
             slam.setParams(params)
+            slam.setUseFeatures(True)
             slam.setUseLandmarks(True)
             landmark_estimator = LandmarkEstimator()
 
@@ -146,11 +148,18 @@ class Basalt(Pipeline):
             # Setup stereo
             stereo.setExtendedDisparity(False)
             stereo.setLeftRightCheck(True)
-            stereo.setSubpixel(True)
+            stereo.setSubpixel(False)
             stereo.setRectifyEdgeFillColor(0)
             stereo.enableDistortionCorrection(True)
             stereo.initialConfig.setLeftRightCheckThreshold(10)
             stereo.setDepthAlign(depthai.CameraBoardSocket.CAM_B)
+
+            # Setup feature tracker
+            feature_tracker.setHardwareResources(2, 2)
+            feature_tracker.initialConfig.setCornerDetector(depthai.FeatureTrackerConfig.CornerDetector.Type.SHI_THOMASI)
+            feature_tracker.initialConfig.setNumTargetFeatures(512)
+            feature_tracker.initialConfig.setMotionEstimator(False)
+            feature_tracker.initialConfig.FeatureMaintainer.minimumDistanceBetweenFeatures = 49
 
             # Link nodes
             left.requestOutput((frame_width, frame_height)).link(stereo.left)
@@ -163,6 +172,8 @@ class Basalt(Pipeline):
             stereo.syncedRight.link(odom.right)
             stereo.depth.link(slam.depth)
             stereo.rectifiedLeft.link(slam.rect)
+            stereo.rectifiedLeft.link(feature_tracker.inputImage)
+            feature_tracker.outputFeatures.link(slam.features)
             landmark_estimator.landmarks.link(slam.landmarks)
             imu.out.link(odom.imu)
             odom.transform.link(slam.odom)
@@ -171,7 +182,7 @@ class Basalt(Pipeline):
             image_queue = odom.passthrough.createOutputQueue()
             transform_queue = slam.transform.createOutputQueue()
             landmark_queue = landmark_estimator.landmarks.createOutputQueue()
-            passthrough_queue = slam.passthroughFeatures.createOutputQueue()
+            left_tag_queue = left_apriltag.out.createOutputQueue()
 
             # Run pipeline
             p.start()
@@ -181,11 +192,11 @@ class Basalt(Pipeline):
                 image = image_queue.get()
                 transform_message = transform_queue.get()
                 landmark_message = landmark_queue.get()
+                left_tag_message = left_tag_queue.get()
                 assert isinstance(image, depthai.ImgFrame), "Expected ImgFrame"
                 assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
                 assert isinstance(landmark_message, depthai.Landmarks), "Expected Landmarks"
 
-                logging.debug(str(landmark_message))
 
                 temp_point = transform_message.getTranslation()
                 temp_quaternion = transform_message.getQuaternion()
@@ -200,7 +211,7 @@ class Basalt(Pipeline):
                 logging.debug(str(pose))
 
                 frame = image.getCvFrame()
-
+                OpenCVHelp.drawTags(frame, left_tag_message.aprilTags, (0, 0, 0))
                 with variables.video_lock:
                     variables.video_frame = frame.copy()
 
