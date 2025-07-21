@@ -32,7 +32,7 @@ class LandmarkEstimator(depthai.node.ThreadedHostNode):
             if left_estimate and right_estimate:
                 pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, variables.baseline, Perspective.LEFT)
                 common_tags = list(set(left_estimate.fiducialIDsUsed) & set(right_estimate.fiducialIDsUsed))
-                for tagID in left_estimate.fiducialIDsUsed:
+                for tagID in common_tags:
                     camToTag = Transform3d(pose, self.fieldLayout.getTagPose(tagID))
                     landmark = depthai.Landmark()
                     landmark.id = tagID
