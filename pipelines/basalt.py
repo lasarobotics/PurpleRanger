@@ -21,7 +21,6 @@ import variables
 from .pipeline import Pipeline
 from utils.apriltag import TargetModel, OpenCVHelp
 from utils.nodes import LandmarkEstimator
-# from utils.nodes.landmarkEstimator import LandmarkEstimator
 
 
 class Basalt(Pipeline):
@@ -127,7 +126,10 @@ class Basalt(Pipeline):
                 "Grid/3D": "true",
                 "Rtabmap/SaveWMState": "true",
                 "RGBD/MarkerDetection": "true",
+                "Optimizer/Strategy": "2",
                 "Optimizer/PriorsIgnored": "false",
+                "Optimizer/GravitySigma": "0.3",
+                "Marker/VarianceOrientationIgnored": "true",
                 "Marker/Priors": marker_priors
             }
             slam.setParams(params)
@@ -177,6 +179,7 @@ class Basalt(Pipeline):
             feature_tracker.outputFeatures.link(slam.features)
             landmark_estimator.landmarks.link(slam.landmarks)
             imu.out.link(odom.imu)
+            imu.out.link(slam.imu)
             odom.transform.link(slam.odom)
 
             # Create output queues
