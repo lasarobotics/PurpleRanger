@@ -12,7 +12,7 @@ import variables
 from utils.apriltag import OpenCVHelp, TargetModel, TagCorner, AprilTagPoseEstimation, Perspective
 
 translation_origin = Translation3d()
-rotation_covariance = 0.05
+rotation_covariance = 0.01
 
 class LandmarkEstimator(depthai.node.ThreadedHostNode):
     def __init__(self):
@@ -46,7 +46,6 @@ class LandmarkEstimator(depthai.node.ThreadedHostNode):
                     covariance_matrix[3][3] = rotation_covariance
                     covariance_matrix[4][4] = rotation_covariance
                     covariance_matrix[5][5] = rotation_covariance
-                    logging.debug(str(covariance_matrix))
                     landmark = depthai.Landmark()
                     landmark.id = tagID
                     landmark.size = self.size

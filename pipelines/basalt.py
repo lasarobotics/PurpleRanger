@@ -97,8 +97,8 @@ class Basalt(Pipeline):
                 device.setIrFloodLightIntensity(self.config["IRFloodlightIntensity"])
 
             fps = 60
-            frame_width = 1280
-            frame_height = 800
+            frame_width = 640
+            frame_height = 480
 
             if "OAK-D-LITE" in device.getDeviceName():
                 fps = 90
@@ -127,10 +127,11 @@ class Basalt(Pipeline):
                 "Rtabmap/SaveWMState": "true",
                 "RGBD/MarkerDetection": "true",
                 "Optimizer/Strategy": "2",
+                "Optimizer/Iterations": "50",
                 "Optimizer/PriorsIgnored": "false",
                 "Optimizer/GravitySigma": "0.3",
                 "Marker/VarianceOrientationIgnored": "true",
-                "Marker/Priors": marker_priors
+                "Marker/Priors": marker_priors,
             }
             slam.setParams(params)
             slam.setUseFeatures(True)
