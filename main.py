@@ -20,7 +20,7 @@ from flask import Flask
 from flask import render_template
 
 import variables
-from pipelines import Pipeline, AprilTag2D, AprilTag3D, Basalt, ObjectTracker, RTABMap
+from pipelines import Pipeline, AprilTag2D, AprilTag3D, Basalt, BasaltSimple, ObjectTracker, RTABMap
 
 NAME = "PurpleRanger"
 
@@ -144,7 +144,7 @@ if __name__ ==  "__main__":
     # Select pipeline
     match args.pipeline:
         case "vio":
-            pipeline = Basalt(table)
+            pipeline = BasaltSimple(table)
         case "object":
             pipeline = ObjectTracker()
         case "apriltag2d":
