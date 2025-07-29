@@ -97,6 +97,7 @@ if __name__ ==  "__main__":
     parser.add_argument("--pipeline", required=True, choices=["vio", "object", "apriltag2d", "apriltag3d"], help="pipeline type")
     parser.add_argument("--tag-map", help="path to AprilTag map JSON file")
     parser.add_argument("--verbose", action="store_true", help="debug level output")
+    parser.add_argument("--trace", action="store_true", help="trace level output")
 
     # Parse arguments
     args = parser.parse_args()
@@ -108,6 +109,9 @@ if __name__ ==  "__main__":
         level=loglevel,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
+
+    # Set trace log level flag
+    if args.trace: variables.trace = True
 
     # Init NT4
     nt_instance = ntcore.NetworkTableInstance.getDefault()
@@ -160,4 +164,4 @@ if __name__ ==  "__main__":
     pipeline.start()
 
     # Start web server
-    app.run(host="localhost", port=8080, debug=False, threaded=False, use_reloader=False)
+    app.run(host="localhost", port=8080, debug=False, threaded=True, use_reloader=False)

@@ -1,5 +1,6 @@
 import math
 import logging
+from enum import Enum
 
 import numpy as np
 
@@ -16,20 +17,35 @@ TAG_TRANSFORM = Transform3d(Translation3d(), Rotation3d(math.pi, 0.0, math.pi))
 ROLL_THRESHOLD = math.radians(60.0)
 PITCH_THRESHOLD = math.radians(60.0)
 
+class Perspective(Enum):
+    LEFT = 0
+    RIGHT = 1
+    CENTER = 2
+
 class AprilTagPoseEstimation:
 
     @staticmethod
-    def mergePoses(left_estimate: PnpResult, right_estimate: PnpResult, baseline: float):
-        center_to_left = Transform3d(0, +baseline / 2, 0, Rotation3d())
-        center_to_right = Transform3d(0, -baseline / 2, 0, Rotation3d())
+    def mergePoses(left_estimate: PnpResult, right_estimate: PnpResult, baseline: float, perspective: Perspective = Perspective.CENTER):
+        left_transform = Transform3d(0, +baseline / 2, 0, Rotation3d())
+        right_transform = Transform3d(0, -baseline / 2, 0, Rotation3d())
+        match perspective:
+            case Perspective.LEFT:
+                left_transform = Transform3d(0, 0, 0, Rotation3d())
+                right_transform = Transform3d(0, -baseline, 0, Rotation3d())
+            case Perspective.RIGHT:
+                left_transform = Transform3d(0, +baseline, 0, Rotation3d())
+                right_transform = Transform3d(0, 0, 0, Rotation3d())
+            case _:
+                pass
+
         pose = None
         if left_estimate is None and right_estimate is None:
             logging.debug("No tags seen")
         elif left_estimate is not None and right_estimate is not None:
-            left_center_offset = center_to_left.inverse().translation().rotateBy(right_estimate.best.rotation())
-            right_center_offset = center_to_right.inverse().translation().rotateBy(right_estimate.best.rotation())
-            left_pose = Pose3d(left_estimate.best.translation() + left_center_offset, left_estimate.best.rotation())
-            right_pose = Pose3d(right_estimate.best.translation() + right_center_offset, right_estimate.best.rotation())
+            left_offset = left_transform.inverse().translation().rotateBy(right_estimate.best.rotation())
+            right_offset = right_transform.inverse().translation().rotateBy(right_estimate.best.rotation())
+            left_pose = Pose3d(left_estimate.best.translation() + left_offset, left_estimate.best.rotation())
+            right_pose = Pose3d(right_estimate.best.translation() + right_offset, right_estimate.best.rotation())
             twist = left_pose.log(right_pose)
             scaled_twist = Twist3d(
                 twist.dx / 2, twist.dy / 2, twist.dz / 2,
@@ -37,11 +53,11 @@ class AprilTagPoseEstimation:
             )
             pose = left_pose.exp(scaled_twist)
         elif left_estimate is None:
-            right_center_offset = center_to_right.inverse().translation().rotateBy(right_estimate.best.rotation())
-            pose = Pose3d(right_estimate.best.translation() + right_center_offset, right_estimate.best.rotation())
+            right_offset = right_transform.inverse().translation().rotateBy(right_estimate.best.rotation())
+            pose = Pose3d(right_estimate.best.translation() + right_offset, right_estimate.best.rotation())
         elif right_estimate is None:
-            left_center_offset = center_to_left.inverse().translation().rotateBy(left_estimate.best.rotation())
-            pose = Pose3d(left_estimate.best.translation() + left_center_offset, left_estimate.best.rotation())
+            left_offset = left_transform.inverse().translation().rotateBy(left_estimate.best.rotation())
+            pose = Pose3d(left_estimate.best.translation() + left_offset, left_estimate.best.rotation())
 
         return pose
 
@@ -126,6 +142,7 @@ class AprilTagPoseEstimation:
                 ambiguity=camToTag.ambiguity,
                 bestReprojErr=camToTag.bestReprojErr,
                 altReprojErr=camToTag.altReprojErr,
+                fiducialIDsUsed=[knownTags[0].ID]
             )
             return AprilTagPoseEstimation.isResultValid(result)
 
@@ -141,6 +158,7 @@ class AprilTagPoseEstimation:
                 # Invert best/alt transforms
                 result.best = result.best.inverse()
                 result.alt = result.alt.inverse()
+                result.fiducialIDsUsed = [tag.ID for tag in knownTags]
 
             return AprilTagPoseEstimation.isResultValid(result)
 
