@@ -160,10 +160,10 @@ class Basalt(Pipeline):
 
             # Setup feature tracker
             feature_tracker.setHardwareResources(2, 2)
-            feature_tracker.initialConfig.setCornerDetector(depthai.FeatureTrackerConfig.CornerDetector.Type.SHI_THOMASI)
-            feature_tracker.initialConfig.setNumTargetFeatures(512)
+            feature_tracker.initialConfig.setCornerDetector(depthai.FeatureTrackerConfig.CornerDetector.Type.HARRIS)
+            feature_tracker.initialConfig.setNumTargetFeatures(3000)
             feature_tracker.initialConfig.setMotionEstimator(False)
-            feature_tracker.initialConfig.FeatureMaintainer.minimumDistanceBetweenFeatures = 49
+            feature_tracker.initialConfig.FeatureMaintainer.minimumDistanceBetweenFeatures = 9
 
             # Link nodes
             left.requestOutput((frame_width, frame_height)).link(stereo.left)
