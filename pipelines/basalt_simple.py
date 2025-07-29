@@ -35,10 +35,16 @@ class BasaltSimple(Pipeline):
 
         self.field_pose_init = False
 
-        ## CHANGED: Particle filter parameters
-        self.num_particles = 3000
+        ## Change number of particles for performance
+        self.num_particles = 2000
         self.particles = np.empty(self.num_particles, dtype=object)
         self.weights = np.ones(self.num_particles) / self.num_particles
+
+        # Use NumPy arrays to store particle data for vectorized operations
+        self.particle_translations = np.zeros((self.num_particles, 3))
+        self.particle_quaternions = np.zeros((self.num_particles, 4))
+        self.particle_quaternions[:, 0] = 1.0 # W,X,Y,Z for identity quaternion
+
         # Noise added during the prediction step to simulate VIO drift
         self.motion_noise = [0.001, 0.001, 0.001, 0.002, 0.002, 0.002] # Trans(x,y,z), Rot(r,p,y)
 
@@ -79,85 +85,87 @@ class BasaltSimple(Pipeline):
 
     ## NEW: Initialize particles around the first measurement
     def __initialize_particles(self, initial_pose: Pose3d):
-        for i in range(self.num_particles):
-            self.particles[i] = initial_pose
+        t = initial_pose.translation()
+        q = initial_pose.rotation().getQuaternion()
+
+        self.particle_translations[:, :] = [t.X(), t.Y(), t.Z()]
+        self.particle_quaternions[:, :] = [q.W(), q.X(), q.Y(), q.Z()]
+
         self.field_pose_init = True
         logging.info("Particle filter initialized.")
 
 
-    ## NEW: Predict step - move particles based on VIO
+    ## FAST LOOP: Vectorized Predict
     def __predict(self, delta_transform: Transform3d):
+        # 1. Generate noise for all particles at once
+        noise = np.random.normal(scale=self.motion_noise, size=(self.num_particles, 6))
+
+        # 2. Apply delta transform (this part remains iterative due to wpimath object model)
+        # This is the main remaining bottleneck. For max performance, you'd replace wpimath
+        # with pure NumPy-based SE(3) transformation functions.
         for i in range(self.num_particles):
-            # Apply VIO's delta transform
-            p = self.particles[i].transformBy(delta_transform)
+            p = Pose3d(Translation3d(*self.particle_translations[i]), Rotation3d(Quaternion(*self.particle_quaternions[i])))
+            p = p.transformBy(delta_transform)
+            t = p.translation()
+            q = p.rotation().getQuaternion()
+            self.particle_translations[i] = [t.X(), t.Y(), t.Z()]
+            self.particle_quaternions[i] = [q.W(), q.X(), q.Y(), q.Z()]
 
-            # Add random noise to simulate drift
-            noise_t = Translation3d(np.random.normal(0, self.motion_noise[0]),
-                                    np.random.normal(0, self.motion_noise[1]),
-                                    np.random.normal(0, self.motion_noise[2]))
-            noise_r = Rotation3d(np.random.normal(0, self.motion_noise[3]),
-                                 np.random.normal(0, self.motion_noise[4]),
-                                 np.random.normal(0, self.motion_noise[5]))
+        # 3. Apply noise to translation and rotation in a vectorized way
+        self.particle_translations += noise[:, :3]
+        # Applying noise to quaternions is complex; this is a simplified approach
+        self.particle_quaternions[:, 1:] += noise[:, 3:]
+        # Renormalize quaternions
+        self.particle_quaternions /= np.linalg.norm(self.particle_quaternions, axis=1)[:, np.newaxis]
 
-            self.particles[i] = Pose3d(p.translation() + noise_t, p.rotation() + noise_r)
-
-
-    ## NEW: Update step - weigh particles based on AprilTag measurement
+    ## FAST LOOP: Vectorized Update
     def __update(self, measurement: Pose3d, measurement_noise_std: list[float]):
-        for i in range(self.num_particles):
-            # .log() returns a Twist3d object (dx, dy, dz, rx, ry, rz)
-            error_twist = self.particles[i].log(measurement)
+        m_t = np.array([measurement.translation().X(), measurement.translation().Y(), measurement.translation().Z()])
+        m_q = measurement.rotation().getQuaternion()
+        m_rot_matrix = measurement.rotation().toMatrix()
+        inv_measurement_noise_std_sq = 1.0 / (measurement_noise_std ** 2)
 
-            ## CHANGED: Manually create a list from the Twist3d components
-            error = [error_twist.dx, error_twist.dy, error_twist.dz, error_twist.rx, error_twist.ry, error_twist.rz]
+        # Calculate translational error
+        t_error = self.particle_translations - m_t
 
-            # Calculate weight using a multivariate Gaussian probability density function.
-            # This scores the particle based on its distance from the measurement.
-            g = 1.0
-            for j in range(6):
-                g *= (1.0 / (measurement_noise_std[j] * math.sqrt(2.0 * math.pi))) * \
-                      math.exp(-0.5 * (error[j] / measurement_noise_std[j]) ** 2)
-            self.weights[i] = g
+        # Calculate rotational error (this is a simplified metric: angle between quaternions)
+        # A full `log` map is complex to vectorize cleanly with this object model
+        dot_product = np.sum(self.particle_quaternions * np.array([m_q.W(), m_q.X(), m_q.Y(), m_q.Z()]), axis=1)
+        # Clip to avoid math errors from floating point inaccuracies
+        dot_product = np.clip(dot_product, -1.0, 1.0)
+        r_error = 2 * np.arccos(np.abs(dot_product))
 
-        # Normalize weights so they sum to 1
-        self.weights += 1.e-300 # prevent division by zero
-        self.weights /= sum(self.weights)
+        # Calculate weights using vectorized Gaussian PDF calculation (log-likelihood for stability)
+        log_likelihood = -0.5 * (np.sum(t_error**2 * inv_measurement_noise_std_sq[:3], axis=1) +
+                                (r_error**2 * inv_measurement_noise_std_sq[3])) # Simplified rotational error
 
+        # Convert log-likelihood to weights
+        self.weights = np.exp(log_likelihood - np.max(log_likelihood)) # Subtract max for numerical stability
+        self.weights /= np.sum(self.weights)
 
-    ## NEW: Resample step - generate new particle cloud
+    ## FAST LOOP: Vectorized Resample
     def __resample(self):
-        new_particles = np.empty(self.num_particles, dtype=object)
         indices = np.random.choice(self.num_particles, size=self.num_particles, p=self.weights)
-        for i, idx in enumerate(indices):
-            new_particles[i] = self.particles[idx]
-        self.particles = new_particles
+        self.particle_translations = self.particle_translations[indices]
+        self.particle_quaternions = self.particle_quaternions[indices]
         self.weights.fill(1.0 / self.num_particles)
 
-
-    ## NEW: Estimate final pose from the particle cloud
+    ## FAST LOOP: Vectorized Pose Estimation
     def __estimate_pose(self) -> Pose3d:
-        # Calculate the weighted mean of all particles
-        mean_t = Translation3d()
-        # For rotation, we average the quaternions. This is more stable than averaging Euler angles.
-        mean_q = Quaternion(0,0,0,0)
+        # Weighted average of translations
+        mean_t_arr = np.average(self.particle_translations, weights=self.weights, axis=0)
 
-        for i in range(self.num_particles):
-            p = self.particles[i]
-            w = self.weights[i]
-            mean_t += p.translation() * w
-            q = p.rotation().getQuaternion()
+        # Weighted average of quaternions
+        # Ensure alignment (all quaternions point in the same direction on the hypersphere)
+        # This is a more robust way to handle the quaternion averaging
+        first_q = self.particle_quaternions[0]
+        signs = np.sign(np.dot(self.particle_quaternions, first_q))
+        aligned_quats = self.particle_quaternions * signs[:, np.newaxis]
 
-            # Ensure quaternions are aligned for averaging (handle the q = -q duality)
-            if mean_q.dot(q) < 0:
-                q = Quaternion(-q.W(), -q.X(), -q.Y(), -q.Z())
+        mean_q_arr = np.average(aligned_quats, weights=self.weights, axis=0)
+        mean_q_arr /= np.linalg.norm(mean_q_arr)
 
-            mean_q = Quaternion(mean_q.W() + q.W() * w,
-                                mean_q.X() + q.X() * w,
-                                mean_q.Y() + q.Y() * w,
-                                mean_q.Z() + q.Z() * w)
-
-        mean_q.normalize()
-        return Pose3d(mean_t, Rotation3d(mean_q))
+        return Pose3d(Translation3d(*mean_t_arr), Rotation3d(Quaternion(*mean_q_arr)))
 
 
     def __session(self):

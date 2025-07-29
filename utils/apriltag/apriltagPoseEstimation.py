@@ -28,7 +28,7 @@ class Perspective(Enum):
 class AprilTagPoseEstimation:
 
     @staticmethod
-    def mergePoses(left_estimate: PnpResult, right_estimate: PnpResult, field_layout: AprilTagFieldLayout, baseline: float, perspective: Perspective = Perspective.CENTER) -> tuple[Pose3d, list[float]]:
+    def mergePoses(left_estimate: PnpResult, right_estimate: PnpResult, field_layout: AprilTagFieldLayout, baseline: float, perspective: Perspective = Perspective.CENTER) -> tuple[Pose3d, np.array]:
         left_transform = Transform3d(0, +baseline / 2, 0, Rotation3d())
         right_transform = Transform3d(0, -baseline / 2, 0, Rotation3d())
 
@@ -77,7 +77,7 @@ class AprilTagPoseEstimation:
             translation_noise_std = 0.01 * (minimum_distance ** 2) / len(tags_used)
             measurement_noise_std = [translation_noise_std, translation_noise_std, translation_noise_std, 0.2, 0.2, 0.2]
 
-        return pose, measurement_noise_std
+        return pose, np.array(measurement_noise_std)
 
     @staticmethod
     def isResultValid(result: PnpResult) -> PnpResult:
