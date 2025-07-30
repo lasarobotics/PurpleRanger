@@ -36,9 +36,10 @@ class BasaltSimple(Pipeline):
         self.field_pose_init = False
 
         ## Change number of particles for performance
-        self.num_particles = 2000
+        self.num_particles = 500
         self.particles = np.empty(self.num_particles, dtype=object)
         self.weights = np.ones(self.num_particles) / self.num_particles
+        self.n_eff = 1.0 / np.sum(self.weights ** 2)
 
         # Use NumPy arrays to store particle data for vectorized operations
         self.particle_translations = np.zeros((self.num_particles, 3))
@@ -46,7 +47,7 @@ class BasaltSimple(Pipeline):
         self.particle_quaternions[:, 0] = 1.0 # W,X,Y,Z for identity quaternion
 
         # Noise added during the prediction step to simulate VIO drift
-        self.motion_noise = [0.001, 0.001, 0.001, 0.002, 0.002, 0.002] # Trans(x,y,z), Rot(r,p,y)
+        self.motion_noise = [0.005, 0.005, 0.005, 0.002, 0.002, 0.002] # Trans(x,y,z), Rot(r,p,y)
 
         # VIO transform from the previous frame, needed to calculate delta
         self.last_basalt_transform = None
@@ -82,6 +83,18 @@ class BasaltSimple(Pipeline):
         self.config_entries.append(ir_floodlight_intensity_entry)
         self.config_entries.append(apriltag_map_path_entry)
 
+    def __q_mult(self, q1, q2):
+        """
+        Helper function for vectorized quaternion multiplication
+        """
+        w1, x1, y1, z1 = q1[:, 0], q1[:, 1], q1[:, 2], q1[:, 3]
+        w2, x2, y2, z2 = q2[0], q2[1], q2[2], q2[3]
+        w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+        x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+        y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+        z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+        return np.stack((w, x, y, z), axis=1)
+
 
     ## NEW: Initialize particles around the first measurement
     def __initialize_particles(self, initial_pose: Pose3d):
@@ -97,26 +110,31 @@ class BasaltSimple(Pipeline):
 
     ## FAST LOOP: Vectorized Predict
     def __predict(self, delta_transform: Transform3d):
-        # 1. Generate noise for all particles at once
+        delta_t = delta_transform.translation()
+        delta_q_obj = delta_transform.rotation().getQuaternion()
+        delta_t_vec = np.array([delta_t.X(), delta_t.Y(), delta_t.Z()])
+        delta_q_vec = np.array([delta_q_obj.W(), delta_q_obj.X(), delta_q_obj.Y(), delta_q_obj.Z()])
+
+        # 1. Rotate the delta_t vector by all particle rotations (quaternions) at once.
+        # This is the correct, memory-efficient way to calculate (R_old * T_delta).
+        q_vec = self.particle_quaternions[:, 1:]
+        q_w = self.particle_quaternions[:, 0][:, np.newaxis]
+        # Vectorized formula for rotating a single vector by many quaternions
+        t_rotated = 2 * np.cross(q_vec, np.cross(q_vec, delta_t_vec) + q_w * delta_t_vec) + delta_t_vec
+
+        # 2. Add the rotated delta_t to the particle translations: T_new = T_old + (R_old * T_delta)
+        self.particle_translations += t_rotated
+
+        # 3. Update all particle rotations: R_new = R_old * R_delta
+        self.particle_quaternions = self.__q_mult(self.particle_quaternions, delta_q_vec)
+
+        # 4. Apply random motion noise
         noise = np.random.normal(scale=self.motion_noise, size=(self.num_particles, 6))
-
-        # 2. Apply delta transform (this part remains iterative due to wpimath object model)
-        # This is the main remaining bottleneck. For max performance, you'd replace wpimath
-        # with pure NumPy-based SE(3) transformation functions.
-        for i in range(self.num_particles):
-            p = Pose3d(Translation3d(*self.particle_translations[i]), Rotation3d(Quaternion(*self.particle_quaternions[i])))
-            p = p.transformBy(delta_transform)
-            t = p.translation()
-            q = p.rotation().getQuaternion()
-            self.particle_translations[i] = [t.X(), t.Y(), t.Z()]
-            self.particle_quaternions[i] = [q.W(), q.X(), q.Y(), q.Z()]
-
-        # 3. Apply noise to translation and rotation in a vectorized way
         self.particle_translations += noise[:, :3]
-        # Applying noise to quaternions is complex; this is a simplified approach
         self.particle_quaternions[:, 1:] += noise[:, 3:]
-        # Renormalize quaternions
+        # Re-normalize all quaternions to prevent drift
         self.particle_quaternions /= np.linalg.norm(self.particle_quaternions, axis=1)[:, np.newaxis]
+
 
     ## FAST LOOP: Vectorized Update
     def __update(self, measurement: Pose3d, measurement_noise_std: list[float]):
@@ -142,13 +160,38 @@ class BasaltSimple(Pipeline):
         # Convert log-likelihood to weights
         self.weights = np.exp(log_likelihood - np.max(log_likelihood)) # Subtract max for numerical stability
         self.weights /= np.sum(self.weights)
+        self.n_eff = 1.0 / np.sum(self.weights ** 2)
 
     ## FAST LOOP: Vectorized Resample
     def __resample(self):
-        indices = np.random.choice(self.num_particles, size=self.num_particles, p=self.weights)
+        """
+        Performs vectorized low-variance resampling.
+        This is much faster than an iterative approach.
+        """
+
+        if self.n_eff >= self.num_particles / 2: return
+
+        # Calculate the cumulative sum of weights
+        cumulative_sum = np.cumsum(self.weights)
+        # Ensure the last element is exactly 1.0 to avoid floating point errors
+        cumulative_sum[-1] = 1.0
+
+        # Generate a single random starting point
+        start_point = np.random.uniform(0, 1.0 / self.num_particles)
+
+        # Generate all sample points in a single vectorized operation
+        sample_points = start_point + np.arange(self.num_particles) / self.num_particles
+
+        # Use np.searchsorted to find the indices for all sample points at once
+        indices = np.searchsorted(cumulative_sum, sample_points, side='left')
+
+        # Select the new particles using the calculated indices
         self.particle_translations = self.particle_translations[indices]
         self.particle_quaternions = self.particle_quaternions[indices]
+
+        # Reset weights to be uniform
         self.weights.fill(1.0 / self.num_particles)
+
 
     ## FAST LOOP: Vectorized Pose Estimation
     def __estimate_pose(self) -> Pose3d:
