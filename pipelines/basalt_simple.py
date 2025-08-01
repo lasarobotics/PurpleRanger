@@ -304,28 +304,17 @@ class BasaltSimple(Pipeline):
                     self.__predict(delta_transform)
 
                 # AprilTag measurement
-                apriltag_measurements = []
                 left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(left_camera_matrix, left_dist_coeffs, left_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
                 right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(right_camera_matrix, right_dist_coeffs, right_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
-                left_estimate, right_estimate = AprilTagPoseEstimation.offsetPose(left_estimate, right_estimate, Perspective.LEFT, variables.baseline)
-                if left_estimate: apriltag_measurements.append(left_estimate)
-                if right_estimate: apriltag_measurements.append(right_estimate)
+                field_pose_estimate, measurement_noise_std = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, field_layout, Perspective.LEFT, variables.baseline)
 
-                if not self.field_pose_init and apriltag_measurements:
+                if not self.field_pose_init and field_pose_estimate:
                     # First measurement, initialize the filter
-                    pose_estimate = Pose3d(apriltag_measurements[0].best.translation(), apriltag_measurements[0].best.rotation())
-                    self.__initialize_particles(pose_estimate)
+                    self.__initialize_particles(field_pose_estimate)
 
-                for measurement in apriltag_measurements:
+                elif field_pose_estimate:
                     # Particle Filter: Update and Resample Steps
-                    pose_estimate = Pose3d(measurement.best.translation(), measurement.best.rotation())
-                    minimum_distance = sys.maxsize
-                    for tag_id in measurement.fiducialIDsUsed:
-                        distance_to_tag = pose_estimate.translation().distance(field_layout.getTagPose(tag_id).translation())
-                        if distance_to_tag < minimum_distance: minimum_distance = distance_to_tag
-                    translation_noise_std = 0.01 * (minimum_distance ** 2) / len(measurement.fiducialIDsUsed)
-                    measurement_noise_std = np.array([translation_noise_std, translation_noise_std, translation_noise_std, 0.2, 0.2, 0.2])
-                    self.__update(pose_estimate, measurement_noise_std)
+                    self.__update(field_pose_estimate, measurement_noise_std)
                     self.__resample()
 
                 if not self.field_pose_init:
