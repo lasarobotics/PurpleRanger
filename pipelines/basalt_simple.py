@@ -97,8 +97,14 @@ class BasaltSimple(Pipeline):
         return np.stack((w, x, y, z), axis=1)
 
 
-    ## NEW: Initialize particles around the first measurement
+    ## Initialize particles around the first measurement
     def __initialize_particles(self, initial_pose: Pose3d):
+        """Initialize particle filter
+
+        Args:
+            initial_pose (Pose3d): Initial pose to start at
+        """
+
         t = initial_pose.translation()
         q = initial_pose.rotation().getQuaternion()
 
@@ -109,27 +115,33 @@ class BasaltSimple(Pipeline):
         logging.info("Particle filter initialized.")
 
 
-    ## FAST LOOP: Vectorized Predict
+    ## Vectorized Predict
     def __predict(self, delta_transform: Transform3d):
+        """Predict motion of particles since last loop
+
+        Args:
+            delta_transform (Transform3d): Motion delta
+        """
+
         delta_t = delta_transform.translation()
         delta_q_obj = delta_transform.rotation().getQuaternion()
         delta_t_vec = np.array([delta_t.X(), delta_t.Y(), delta_t.Z()])
         delta_q_vec = np.array([delta_q_obj.W(), delta_q_obj.X(), delta_q_obj.Y(), delta_q_obj.Z()])
 
-        # 1. Rotate the delta_t vector by all particle rotations (quaternions) at once.
+        # Rotate the delta_t vector by all particle rotations (quaternions) at once.
         # This is the correct, memory-efficient way to calculate (R_old * T_delta).
         q_vec = self.particle_quaternions[:, 1:]
         q_w = self.particle_quaternions[:, 0][:, np.newaxis]
         # Vectorized formula for rotating a single vector by many quaternions
         t_rotated = 2 * np.cross(q_vec, np.cross(q_vec, delta_t_vec) + q_w * delta_t_vec) + delta_t_vec
 
-        # 2. Add the rotated delta_t to the particle translations: T_new = T_old + (R_old * T_delta)
+        # Add the rotated delta_t to the particle translations: T_new = T_old + (R_old * T_delta)
         self.particle_translations += t_rotated
 
-        # 3. Update all particle rotations: R_new = R_old * R_delta
+        # Update all particle rotations: R_new = R_old * R_delta
         self.particle_quaternions = self.__q_mult(self.particle_quaternions, delta_q_vec)
 
-        # 4. Apply random motion noise
+        # Apply random motion noise
         noise = np.random.normal(scale=self.motion_noise, size=(self.num_particles, 6))
         self.particle_translations += noise[:, :3]
         self.particle_quaternions[:, 1:] += noise[:, 3:]
@@ -137,8 +149,15 @@ class BasaltSimple(Pipeline):
         self.particle_quaternions /= np.linalg.norm(self.particle_quaternions, axis=1)[:, np.newaxis]
 
 
-    ## FAST LOOP: Vectorized Update
-    def __update(self, measurement: Pose3d, measurement_noise_std: list[float]):
+    ## Vectorized Update
+    def __update(self, measurement: Pose3d, measurement_noise_std: np.array):
+        """Update particle filter with measurement
+
+        Args:
+            measurement (Pose3d): Pose measurement
+            measurement_noise_std (np.array): standare deviation of measurement
+        """
+
         m_t = np.array([measurement.translation().X(), measurement.translation().Y(), measurement.translation().Z()])
         m_q = measurement.rotation().getQuaternion()
         m_rot_matrix = measurement.rotation().toMatrix()
@@ -163,11 +182,9 @@ class BasaltSimple(Pipeline):
         self.weights /= np.sum(self.weights)
         self.n_eff = 1.0 / np.sum(self.weights ** 2)
 
-    ## FAST LOOP: Vectorized Resample
+
     def __resample(self):
-        """
-        Performs vectorized low-variance resampling.
-        This is much faster than an iterative approach.
+        """Performs vectorized low-variance resampling.
         """
 
         if self.n_eff >= self.num_particles / 2: return
@@ -194,8 +211,13 @@ class BasaltSimple(Pipeline):
         self.weights.fill(1.0 / self.num_particles)
 
 
-    ## FAST LOOP: Vectorized Pose Estimation
     def __estimate_pose(self) -> Pose3d:
+        """Estimate pose
+
+        Returns:
+            Pose3d: Most likely pose
+        """
+
         # Weighted average of translations
         mean_t_arr = np.average(self.particle_translations, weights=self.weights, axis=0)
 
@@ -311,17 +333,17 @@ class BasaltSimple(Pipeline):
                 right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(right_camera_matrix, right_dist_coeffs, right_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
                 field_pose_estimate, measurement_noise_std = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, field_layout, Perspective.LEFT, variables.baseline)
 
+                # First measurement, initialize the filter
                 if not self.field_pose_init and field_pose_estimate:
-                    # First measurement, initialize the filter
                     self.__initialize_particles(field_pose_estimate)
 
+                # Particle Filter: Update and Resample Steps
                 elif field_pose_estimate:
-                    # Particle Filter: Update and Resample Steps
                     self.__update(field_pose_estimate, measurement_noise_std)
                     self.__resample()
 
+                # Do nothing until we see a tag
                 if not self.field_pose_init:
-                    # Do nothing until we see a tag
                     continue
 
                 # Get final pose estimate
@@ -331,13 +353,14 @@ class BasaltSimple(Pipeline):
                 self.pose_publisher.set(final_pose)
                 logging.debug(final_pose)
 
+                # Copy video frame for output
                 frame = image.getCvFrame()
                 OpenCVHelp.drawTags(frame, left_tag_message.aprilTags, (0, 0, 0))
                 with variables.video_lock:
                     variables.video_frame = frame.copy()
 
             p.stop()
-            logging.info("Basalt VIO stopped")
+            logging.info("Basalt Simple stopped")
 
 
     def start(self):
