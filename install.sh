@@ -1,3 +1,5 @@
+#!/bin/bash
+
 sudo apt-get update
 sudo apt-get upgrade --yes
 sudo apt-get install --yes zip unzip git build-essential libgl1 python3-venv python3-pip python-is-python3
