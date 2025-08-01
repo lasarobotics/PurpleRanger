@@ -83,6 +83,7 @@ def sigint_handler(sig, frame):
 if __name__ ==  "__main__":
     # Bind SIGINT handler
     signal.signal(signal.SIGINT, sigint_handler)
+    main_pid = os.getpid()
 
     # Init argparse
     parser = argparse.ArgumentParser(

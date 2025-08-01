@@ -11,3 +11,5 @@ video_frame = None
 baseline = 0.075
 
 trace = False
+
+main_pid = 0
