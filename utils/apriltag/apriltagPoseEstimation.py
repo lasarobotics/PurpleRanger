@@ -134,12 +134,12 @@ class AprilTagPoseEstimation:
 
     @staticmethod
     def estimateCamPosePNP(
-        cameraMatrix: np.ndarray,
-        distCoeffs: np.ndarray,
-        visibleTags: list[depthai.AprilTag],
-        layout: AprilTagFieldLayout,
-        tagModel: TargetModel,
-        tagBlacklist: list[int] = []) -> PnpResult | None:
+        camera_matrix: np.ndarray,
+        dist_coeffs: np.ndarray,
+        visible_tags: list[depthai.AprilTag],
+        field_layout: AprilTagFieldLayout,
+        tag_model: TargetModel,
+        tag_blacklist: list[int] = []) -> PnpResult | None:
         """Performs solvePNP using 3d-2d point correspondences of visible AprilTags to estimate the
         field-to-camera transformation. If only one tag is visible, the result may have an alternate
         solution.
@@ -150,25 +150,27 @@ class AprilTagPoseEstimation:
 
         With multiple tags: {@link OpenCVHelp#solvePNP_SQPNP}
 
-        :param cameraMatrix: The camera intrinsics matrix in standard opencv form
-        :param distCoeffs:   The camera distortion matrix in standard opencv form
-        :param visibleTags:      The visible tags reported by PV. Non-tag targets are automatically excluded.
-        :param tagLayout:    The known tag layout on the field
+        :param cameraMatrix:    The camera intrinsics matrix in standard opencv form
+        :param distCoeffs:      The camera distortion matrix in standard opencv form
+        :param visible_tags:    The visible tags reported by PV. Non-tag targets are automatically excluded.
+        :param field_layout:    The known tag layout on the field
+        :param tag_model:       The tag model to use
+        :param tag_blacklist:   The list of tags to NOT use
 
         :returns: The transformation that maps the field origin to the camera pose. Ensure the {@link
                   PnpResult} are present before utilizing them.
         """
 
-        if len(visibleTags) == 0:
+        if len(visible_tags) == 0:
             return None
 
         corners: list[TagCorner] = []
         knownTags: list[AprilTag] = []
 
         # ensure these are AprilTags in our layout
-        for target in visibleTags:
-            if target.id in tagBlacklist: continue
-            maybePose = layout.getTagPose(target.id)
+        for target in visible_tags:
+            if target.id in tag_blacklist: continue
+            maybePose = field_layout.getTagPose(target.id)
             if maybePose:
                 tag = AprilTag()
                 tag.ID = target.id
@@ -190,7 +192,7 @@ class AprilTagPoseEstimation:
 
         # single-tag pnp
         if len(knownTags) == 1:
-            camToTag = OpenCVHelp.solvePNP_Square(cameraMatrix, distCoeffs, tagModel.getVertices(), points)
+            camToTag = OpenCVHelp.solvePNP_Square(camera_matrix, dist_coeffs, tag_model.getVertices(), points)
             if not camToTag:
                 return None
 
@@ -208,21 +210,21 @@ class AprilTagPoseEstimation:
                 altReprojErr=camToTag.altReprojErr,
                 fiducialIDsUsed=[knownTags[0].ID]
             )
-            return AprilTagPoseEstimation.isResultValid(result)
+            return AprilTagPoseEstimation.isResultValid(result, field_layout)
 
         # multi-tag pnp
         else:
             objectTrls: list[Translation3d] = []
             for tag in knownTags:
-                verts = tagModel.getFieldVertices(tag.pose)
+                verts = tag_model.getFieldVertices(tag.pose)
                 objectTrls += verts
 
-            result = OpenCVHelp.solvePNP_SQPNP(cameraMatrix, distCoeffs, objectTrls, points)
+            result = OpenCVHelp.solvePNP_SQPNP(camera_matrix, dist_coeffs, objectTrls, points)
             if result:
                 # Invert best/alt transforms
                 result.best = result.best.inverse()
                 result.alt = result.alt.inverse()
                 result.fiducialIDsUsed = [tag.ID for tag in knownTags]
 
-            return AprilTagPoseEstimation.isResultValid(result)
+            return AprilTagPoseEstimation.isResultValid(result, field_layout)
 
