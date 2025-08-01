@@ -37,7 +37,7 @@ class BasaltSimple(Pipeline):
         self.field_pose_init = False
 
         ## Change number of particles for performance
-        self.num_particles = 2000
+        self.num_particles = 5000
         self.particles = np.empty(self.num_particles, dtype=object)
         self.weights = np.ones(self.num_particles) / self.num_particles
         self.n_eff = 1.0 / np.sum(self.weights ** 2)
