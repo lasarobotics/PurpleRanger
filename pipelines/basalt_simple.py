@@ -5,6 +5,7 @@ import json
 import signal
 import logging
 import argparse
+import platform
 import threading
 import math
 
@@ -229,12 +230,14 @@ class BasaltSimple(Pipeline):
                 device.setIrLaserDotProjectorIntensity(self.config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(self.config["IRFloodlightIntensity"])
 
-            fps = 60
+            fps = 30
             frame_width = 640
             frame_height = 480
 
+            if "x86" in platform.machine():
+                fps = 60
+
             if "OAK-D-LITE" in device.getDeviceName():
-                fps = 90
                 frame_width = 640
                 frame_height = 480
 
