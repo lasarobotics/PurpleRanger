@@ -132,7 +132,7 @@ if __name__ ==  "__main__":
     if args.tag_map:
         logging.info("Using AprilTag map at " + args.tag_map)
     else:
-        logging.info("No AprilTag map provided, not using AprilTags!")
+        logging.info("No AprilTag map provided, using default tag map!")
 
     # Start NT4 clients
     nt_instance.startClient4(NAME)
