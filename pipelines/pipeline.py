@@ -3,6 +3,8 @@ import logging
 
 import ntcore
 
+import variables
+
 class Pipeline:
     def start(self):
         """Start pipeline
