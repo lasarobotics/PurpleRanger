@@ -351,7 +351,7 @@ class BasaltSimple(Pipeline):
 
                 if not AprilTagPoseEstimation.isPoseValid(final_pose, field_layout):
                     logging.error("Pose is outside field!")
-                    os.kill(variables.main_pid, signal.SIGINT)
+                    self.kill()
 
                 self.status_publisher.set(True)
                 self.pose_publisher.set(final_pose)

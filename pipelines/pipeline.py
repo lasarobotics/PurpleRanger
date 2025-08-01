@@ -1,3 +1,4 @@
+import os
 import logging
 
 import ntcore
@@ -8,13 +9,16 @@ class Pipeline:
         """
         return
 
+
     def stop(self):
         """Stop pipeline
         """
         return
 
+
     def get_config_entries(self) -> list[ntcore.NetworkTableEntry]:
         return []
+
 
     def on_config_change(self, event: ntcore.Event):
         """NT4 config change callback
@@ -30,10 +34,18 @@ class Pipeline:
         self._update_config(self.config, event)
         self.start()
 
+
     def exit(self):
         """Exit pipeline
         """
         return
+
+
+    def kill(self):
+        """Kill pipeline and main process
+        """
+        os.kill(variables.main_pid, signal.SIGINT)
+
 
     def _update_config(self, config: dict, event: ntcore.Event):
         """Update config for pipeline
