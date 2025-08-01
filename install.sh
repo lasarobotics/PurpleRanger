@@ -7,10 +7,9 @@ sudo apt-get install --yes zip unzip git build-essential libgl1 python3-venv pyt
 mkdir --parents ~/.config/systemd/user
 cp systemd/PurpleRanger@.service ~/.config/systemd/user
 loginctl enable-linger $USER
-systemd --user daemon-reload
+systemctl --user daemon-reload
 
+echo
 echo "To use, enable the instance service you would like, using 'systemctl --user enable PurpleRanger@<pipeline_name>.service'"
-echo
 echo "For example 'systemctl --user enable PurpleRanger@vio.service'"
-echo
 echo "Finally run 'systemctl --user start PurpleRanger@<pipeline_name>.service'"
