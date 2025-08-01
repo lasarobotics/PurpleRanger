@@ -10,7 +10,7 @@ from robotpy_apriltag import AprilTagField, AprilTagFieldLayout
 from wpimath.geometry import Pose3d, Translation3d, Transform3d, Rotation3d, Quaternion
 
 import variables
-from utils.apriltag import AprilTagPoseEstimation, TargetModel, OpenCVHelp
+from utils.apriltag import AprilTagPoseEstimation, Perspective, TargetModel, OpenCVHelp
 
 # Create pipeline
 with dai.Pipeline() as p:
@@ -85,7 +85,7 @@ with dai.Pipeline() as p:
                 TargetModel.AprilTag36h11()
             )
 
-            field_pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, variables.baseline)
+            field_pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, Perspective.LEFT, variables.baseline)
             if field_pose:
                 field_pose_origin = field_pose
                 field_pose_init = True

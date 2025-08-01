@@ -28,7 +28,45 @@ class Perspective(Enum):
 class AprilTagPoseEstimation:
 
     @staticmethod
-    def mergePoses(left_estimate: PnpResult, right_estimate: PnpResult, field_layout: AprilTagFieldLayout, baseline: float, perspective: Perspective = Perspective.CENTER) -> tuple[Pose3d, np.array]:
+    def mergePoses(left_estimate: PnpResult, right_estimate: PnpResult, field_layout: AprilTagFieldLayout, perspective: Perspective, baseline: float) -> tuple[Pose3d, np.array]:
+        left_estimate, right_estimate = AprilTagPoseEstimation.offsetPose(left_estimate, right_estimate, perspective, baseline)
+
+        pose = None
+        tags_used = []
+        if left_estimate is None and right_estimate is None:
+            logging.debug("No tags seen")
+        elif left_estimate is not None and right_estimate is not None:
+            tags_used = list(set(left_estimate.fiducialIDsUsed) & set(right_estimate.fiducialIDsUsed))
+            left_pose = Pose3d(left_estimate.best.translation(), left_estimate.best.rotation())
+            right_pose = Pose3d(right_estimate.best.translation(), right_estimate.best.rotation())
+            twist = left_pose.log(right_pose)
+            scaled_twist = Twist3d(
+                twist.dx / 2, twist.dy / 2, twist.dz / 2,
+                twist.rx / 2, twist.ry / 2, twist.rz / 2
+            )
+            pose = left_pose.exp(scaled_twist)
+        elif left_estimate is None:
+            tags_used = right_estimate.fiducialIDsUsed
+            pose = Pose3d(right_estimate.best.translation(), right_estimate.best.rotation())
+        elif right_estimate is None:
+            tags_used = left_estimate.fiducialIDsUsed
+            pose = Pose3d(left_estimate.best.translation(), left_estimate.best.rotation())
+
+        minimum_distance = sys.maxsize
+        for tag_id in tags_used:
+            distance_to_tag = pose.translation().distance(field_layout.getTagPose(tag_id).translation())
+            if distance_to_tag < minimum_distance: minimum_distance = distance_to_tag
+
+        measurement_noise_std = DEFAULT_TAG_MEASUREMENT_NOISE
+        if len(tags_used) > 1:
+            translation_noise_std = 0.01 * (minimum_distance ** 2) / len(tags_used)
+            measurement_noise_std = [translation_noise_std, translation_noise_std, translation_noise_std, 0.2, 0.2, 0.2]
+
+        return pose, np.array(measurement_noise_std)
+
+
+    @staticmethod
+    def offsetPose(left_estimate: PnpResult, right_estimate: PnpResult, perspective: Perspective, baseline: float):
         left_transform = Transform3d(0, +baseline / 2, 0, Rotation3d())
         right_transform = Transform3d(0, -baseline / 2, 0, Rotation3d())
 
@@ -42,42 +80,14 @@ class AprilTagPoseEstimation:
             case _:
                 pass
 
-        pose = None
-        tags_used = []
-        if left_estimate is None and right_estimate is None:
-            logging.debug("No tags seen")
-        elif left_estimate is not None and right_estimate is not None:
-            tags_used = list(set(left_estimate.fiducialIDsUsed) & set(right_estimate.fiducialIDsUsed))
-            left_offset = left_transform.inverse().translation().rotateBy(right_estimate.best.rotation())
-            right_offset = right_transform.inverse().translation().rotateBy(right_estimate.best.rotation())
-            left_pose = Pose3d(left_estimate.best.translation() + left_offset, left_estimate.best.rotation())
-            right_pose = Pose3d(right_estimate.best.translation() + right_offset, right_estimate.best.rotation())
-            twist = left_pose.log(right_pose)
-            scaled_twist = Twist3d(
-                twist.dx / 2, twist.dy / 2, twist.dz / 2,
-                twist.rx / 2, twist.ry / 2, twist.rz / 2
-            )
-            pose = left_pose.exp(scaled_twist)
-        elif left_estimate is None:
-            tags_used = right_estimate.fiducialIDsUsed
-            right_offset = right_transform.inverse().translation().rotateBy(right_estimate.best.rotation())
-            pose = Pose3d(right_estimate.best.translation() + right_offset, right_estimate.best.rotation())
-        elif right_estimate is None:
-            tags_used = left_estimate.fiducialIDsUsed
+        if left_estimate:
             left_offset = left_transform.inverse().translation().rotateBy(left_estimate.best.rotation())
-            pose = Pose3d(left_estimate.best.translation() + left_offset, left_estimate.best.rotation())
+            left_estimate.best = Transform3d(left_estimate.best.translation() + left_offset, left_estimate.best.rotation())
+        if right_estimate:
+            right_offset = right_transform.inverse().translation().rotateBy(right_estimate.best.rotation())
+            right_estimate.best = Transform3d(right_estimate.best.translation() + right_offset, right_estimate.best.rotation())
 
-        minimum_distance = sys.maxsize
-        for tag_id in tags_used:
-            distance_to_tag = pose.translation().distance(field_layout.getTagPose(tag_id).translation())
-            if distance_to_tag < minimum_distance: minimum_distance = distance_to_tag
-
-        measurement_noise_std = DEFAULT_TAG_MEASUREMENT_NOISE
-        if len(tags_used) > 1:
-            translation_noise_std = 0.01 * (minimum_distance ** 2) / len(tags_used)
-            measurement_noise_std = [translation_noise_std, translation_noise_std, translation_noise_std, 0.2, 0.2, 0.2]
-
-        return pose, np.array(measurement_noise_std)
+        return left_estimate, right_estimate
 
     @staticmethod
     def isResultValid(result: PnpResult) -> PnpResult:

@@ -36,7 +36,7 @@ class BasaltSimple(Pipeline):
         self.field_pose_init = False
 
         ## Change number of particles for performance
-        self.num_particles = 500
+        self.num_particles = 2000
         self.particles = np.empty(self.num_particles, dtype=object)
         self.weights = np.ones(self.num_particles) / self.num_particles
         self.n_eff = 1.0 / np.sum(self.weights ** 2)
@@ -304,17 +304,28 @@ class BasaltSimple(Pipeline):
                     self.__predict(delta_transform)
 
                 # AprilTag measurement
+                apriltag_measurements = []
                 left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(left_camera_matrix, left_dist_coeffs, left_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
                 right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(right_camera_matrix, right_dist_coeffs, right_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
-                field_pose_measurement, measurement_noise_std = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, field_layout, variables.baseline, Perspective.LEFT)
+                left_estimate, right_estimate = AprilTagPoseEstimation.offsetPose(left_estimate, right_estimate, Perspective.LEFT, variables.baseline)
+                if left_estimate: apriltag_measurements.append(left_estimate)
+                if right_estimate: apriltag_measurements.append(right_estimate)
 
-                if not self.field_pose_init and field_pose_measurement:
+                if not self.field_pose_init and apriltag_measurements:
                     # First measurement, initialize the filter
-                    self.__initialize_particles(field_pose_measurement)
+                    pose_estimate = Pose3d(apriltag_measurements[0].best.translation(), apriltag_measurements[0].best.rotation())
+                    self.__initialize_particles(pose_estimate)
 
-                elif field_pose_measurement:
+                for measurement in apriltag_measurements:
                     # Particle Filter: Update and Resample Steps
-                    self.__update(field_pose_measurement, measurement_noise_std)
+                    pose_estimate = Pose3d(measurement.best.translation(), measurement.best.rotation())
+                    minimum_distance = sys.maxsize
+                    for tag_id in measurement.fiducialIDsUsed:
+                        distance_to_tag = pose_estimate.translation().distance(field_layout.getTagPose(tag_id).translation())
+                        if distance_to_tag < minimum_distance: minimum_distance = distance_to_tag
+                    translation_noise_std = 0.01 * (minimum_distance ** 2) / len(measurement.fiducialIDsUsed)
+                    measurement_noise_std = np.array([translation_noise_std, translation_noise_std, translation_noise_std, 0.2, 0.2, 0.2])
+                    self.__update(pose_estimate, measurement_noise_std)
                     self.__resample()
 
                 if not self.field_pose_init:

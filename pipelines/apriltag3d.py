@@ -16,7 +16,7 @@ from wpimath.geometry import Pose3d, Twist3d, Transform3d, Translation3d, Rotati
 
 import variables
 from .pipeline import Pipeline
-from utils.apriltag import AprilTagPoseEstimation, TargetModel, OpenCVHelp
+from utils.apriltag import AprilTagPoseEstimation, Perspective, TargetModel, OpenCVHelp
 
 EPSILON = 1e-6
 BASELINE = 0.075
@@ -101,7 +101,7 @@ class AprilTag3D(Pipeline):
                     TargetModel.AprilTag36h11()
                 )
 
-                pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, variables.baseline)
+                pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, Perspective.LEFT, variables.baseline)
                 self.status_publisher.set(pose is not None)
                 if pose:
                     self.pose_publisher.set(pose)
