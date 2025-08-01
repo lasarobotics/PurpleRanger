@@ -15,10 +15,12 @@ from .tagCorner import TagCorner
 from . import OpenCVHelp, TargetModel
 
 TAG_TRANSFORM = Transform3d(Translation3d(), Rotation3d(math.pi, 0.0, math.pi))
-ROLL_THRESHOLD = math.radians(60.0)
-PITCH_THRESHOLD = math.radians(60.0)
+ROLL_THRESHOLD = math.radians(90.0)
+PITCH_THRESHOLD = math.radians(90.0)
 
 DEFAULT_TAG_MEASUREMENT_NOISE = [0.1, 0.1, 0.1, 0.2, 0.2, 0.2]
+
+POSE_HEIGHT_THRESHOLD = 5.0
 
 class Perspective(Enum):
     LEFT = 0
@@ -90,11 +92,45 @@ class AprilTagPoseEstimation:
         return left_estimate, right_estimate
 
     @staticmethod
-    def isResultValid(result: PnpResult) -> PnpResult:
-        # if abs(result.best.rotation().X()) > ROLL_THRESHOLD or abs(result.best.rotation().Y() > PITCH_THRESHOLD):
-        #     return None
+    def isResultValid(result: PnpResult, field_layout: AprilTagFieldLayout) -> PnpResult | None:
+        """Check if PnpResult is valid
+
+        Args:
+            result (PnpResult): result to check
+            field_layout (AprilTagFieldLayout): AprilTag field layout to use
+
+        Returns:
+            PnpResult | None: None if invalid
+        """
+
+        if result.best.translation().X() < 0.0 or result.best.translation().X() > field_layout.getFieldLength(): return None
+        if result.best.translation().Y() < 0.0 or result.best.translation().Y() > field_layout.getFieldWidth(): return None
+        if result.best.translation().Z() < 0.0 or result.best.translation().Z() > POSE_HEIGHT_THRESHOLD: return False
+
+        if abs(result.best.rotation().X()) > ROLL_THRESHOLD: return None
+        if abs(result.best.rotation().Y()) > PITCH_THRESHOLD: return None
 
         return result
+
+    @staticmethod
+    def isPoseValid(pose: Pose3d, field_layout: AprilTagFieldLayout) -> bool:
+        """Check if pose is valid
+
+        Args:
+            pose (Pose3d): pose to check
+            field_layout (AprilTagFieldLayout): AprilTag field layout
+
+        Returns:
+            bool: True if valid
+        """
+        if pose.translation().X() < 0.0 or pose.translation().X() > field_layout.getFieldLength(): return False
+        if pose.translation().Y() < 0.0 or pose.translation().Y() > field_layout.getFieldWidth(): return False
+        if pose.translation().Z() < 0.0 or pose.translation().Z() > POSE_HEIGHT_THRESHOLD: return False
+
+        if abs(pose.rotation().X()) > ROLL_THRESHOLD: return False
+        if abs(pose.rotation().Y()) > PITCH_THRESHOLD: return False
+
+        return True
 
     @staticmethod
     def estimateCamPosePNP(

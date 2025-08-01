@@ -349,6 +349,10 @@ class BasaltSimple(Pipeline):
                 # Get final pose estimate
                 final_pose = self.__estimate_pose()
 
+                if not AprilTagPoseEstimation.isPoseValid(final_pose):
+                    logging.error("Pose is outside field!")
+                    self.stop()
+
                 self.status_publisher.set(True)
                 self.pose_publisher.set(final_pose)
                 logging.debug(final_pose)
