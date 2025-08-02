@@ -105,7 +105,7 @@ class AprilTagPoseEstimation:
 
         if result.best.translation().X() < 0.0 or result.best.translation().X() > field_layout.getFieldLength(): return None
         if result.best.translation().Y() < 0.0 or result.best.translation().Y() > field_layout.getFieldWidth(): return None
-        if result.best.translation().Z() < 0.0 or result.best.translation().Z() > POSE_HEIGHT_THRESHOLD: return False
+        if result.best.translation().Z() < 0.0 or result.best.translation().Z() > POSE_HEIGHT_THRESHOLD: return None
 
         if abs(result.best.rotation().X()) > ROLL_THRESHOLD: return None
         if abs(result.best.rotation().Y()) > PITCH_THRESHOLD: return None
