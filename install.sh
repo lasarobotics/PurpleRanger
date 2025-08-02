@@ -23,6 +23,12 @@ systemctl --user daemon-reload
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
+# Query user for team number
+echo -n "Enter team number: "
+read -r TEAM_NUMBER
+
+sed -i -e "s/????/$TEAM_NUMBER/g" ~/.config/systemd/user/PurpleRanger@.service
+
 echo
 echo "To use, enable the instance service you would like, using 'systemctl --user enable PurpleRanger@<pipeline_name>.service'"
 echo "For example 'systemctl --user enable PurpleRanger@vio.service'"

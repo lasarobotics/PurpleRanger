@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=exec
 # Add 'taskset --cpu-list 4-7' to prioritize running on the fast cores of a Rockchip SOC
-ExecStart=%h/PurpleRanger/.venv/bin/python %h/PurpleRanger/main.py --mode robot --pipeline %i
+ExecStart=%h/PurpleRanger/.venv/bin/python %h/PurpleRanger/main.py --mode robot --pipeline %i --team ????
 Restart=always
 RestartSec=5
 

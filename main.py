@@ -96,6 +96,7 @@ if __name__ ==  "__main__":
     # Add arguments
     parser.add_argument("--mode", required=True, choices=["test", "sim", "robot"], help="select script mode")
     parser.add_argument("--pipeline", required=True, choices=["vio", "object", "apriltag2d", "apriltag3d"], help="pipeline type")
+    parser.add_argument("--team", type=int, help="Team number")
     parser.add_argument("--tag-map", help="path to AprilTag map JSON file")
     parser.add_argument("--verbose", action="store_true", help="debug level output")
     parser.add_argument("--trace", action="store_true", help="trace level output")
@@ -127,6 +128,7 @@ if __name__ ==  "__main__":
             nt_instance.setServer("localhost")
             logging.info("Simulation mode, connecting to localhost NT4 server...")
         case _:
+            nt_instance.setServerTeam(args.team)
             logging.info("Robot mode, connecting to robot NT4 server...")
 
     # Set tag map path
