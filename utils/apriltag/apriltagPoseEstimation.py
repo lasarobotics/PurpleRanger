@@ -35,9 +35,11 @@ class AprilTagPoseEstimation:
 
         pose = None
         tags_used = []
+        tag_multipler = 1
         if left_estimate is None and right_estimate is None:
             logging.debug("No tags seen")
         elif left_estimate is not None and right_estimate is not None:
+            tag_multiplier = 2
             tags_used = list(set(left_estimate.fiducialIDsUsed) & set(right_estimate.fiducialIDsUsed))
             left_pose = Pose3d(left_estimate.best.translation(), left_estimate.best.rotation())
             right_pose = Pose3d(right_estimate.best.translation(), right_estimate.best.rotation())
@@ -61,7 +63,7 @@ class AprilTagPoseEstimation:
 
         measurement_noise_std = DEFAULT_TAG_MEASUREMENT_NOISE
         if len(tags_used) > 1:
-            translation_noise_std = 1e-10 * (minimum_distance ** 2) / len(tags_used)
+            translation_noise_std = (1e-2 * minimum_distance ** 2) / (len(tags_used) * tag_multipler)
             measurement_noise_std = [translation_noise_std, translation_noise_std, translation_noise_std, 1e-2, 1e-2, 1e-2]
 
         return pose, np.array(measurement_noise_std)
