@@ -18,7 +18,7 @@ TAG_TRANSFORM = Transform3d(Translation3d(), Rotation3d(math.pi, 0.0, math.pi))
 ROLL_THRESHOLD = math.radians(90.0)
 PITCH_THRESHOLD = math.radians(90.0)
 
-DEFAULT_TAG_MEASUREMENT_NOISE = [0.1, 0.1, 0.1, 0.2, 0.2, 0.2]
+DEFAULT_TAG_MEASUREMENT_NOISE = [1e-2, 1e-2, 1e-2, 1e-2, 1e-2, 1e-2]
 
 POSE_HEIGHT_THRESHOLD = 5.0
 
@@ -61,8 +61,8 @@ class AprilTagPoseEstimation:
 
         measurement_noise_std = DEFAULT_TAG_MEASUREMENT_NOISE
         if len(tags_used) > 1:
-            translation_noise_std = 0.01 * (minimum_distance ** 2) / len(tags_used)
-            measurement_noise_std = [translation_noise_std, translation_noise_std, translation_noise_std, 0.2, 0.2, 0.2]
+            translation_noise_std = 1e-10 * (minimum_distance ** 2) / len(tags_used)
+            measurement_noise_std = [translation_noise_std, translation_noise_std, translation_noise_std, 1e-2, 1e-2, 1e-2]
 
         return pose, np.array(measurement_noise_std)
 

@@ -37,7 +37,7 @@ class BasaltSimple(Pipeline):
         self.field_pose_init = False
 
         ## Change number of particles for performance
-        self.num_particles = 5000
+        self.num_particles = 2000
         self.particles = np.empty(self.num_particles, dtype=object)
         self.weights = np.ones(self.num_particles) / self.num_particles
         self.n_eff = 1.0 / np.sum(self.weights ** 2)
@@ -48,7 +48,7 @@ class BasaltSimple(Pipeline):
         self.particle_quaternions[:, 0] = 1.0 # W,X,Y,Z for identity quaternion
 
         # Noise added during the prediction step to simulate VIO drift
-        self.motion_noise = [0.005, 0.005, 0.005, 0.002, 0.002, 0.002] # Trans(x,y,z), Rot(r,p,y)
+        self.motion_noise = [1e-2, 1e-2, 1e-2, 1e-4, 1e-4, 1e-4] # Trans(x,y,z), Rot(r,p,y)
 
         # VIO transform from the previous frame, needed to calculate delta
         self.last_basalt_transform = None
@@ -252,12 +252,12 @@ class BasaltSimple(Pipeline):
                 device.setIrLaserDotProjectorIntensity(self.config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(self.config["IRFloodlightIntensity"])
 
-            fps = 30
-            frame_width = 640
-            frame_height = 480
+            fps = 120
+            frame_width = 1280
+            frame_height = 800
 
-            if "x86" in platform.machine():
-                fps = 60
+            # if "x86" in platform.machine():
+            #     fps = 60
 
             if "OAK-D-LITE" in device.getDeviceName():
                 frame_width = 640
@@ -350,9 +350,14 @@ class BasaltSimple(Pipeline):
                 final_pose = self.__estimate_pose()
 
                 if not AprilTagPoseEstimation.isPoseValid(final_pose, field_layout):
-                    logging.error("Pose is outside field!")
-                    self.status_publisher.set(False)
-                    self.kill()
+                    logging.warn("Pose is outside field!")
+                    if field_pose_estimate and AprilTagPoseEstimation.isPoseValid(field_pose_estimate, field_layout):
+                        logging.warn("Attempting to recover using AprilTag pose estimate...")
+                        self.__initialize_particles(field_pose_estimate)
+                        final_pose = self.__estimate_pose()
+                    else:
+                        logging.error("Unable to reinitialize particle filter, killing!")
+                        self.kill()
 
                 self.status_publisher.set(True)
                 self.pose_publisher.set(final_pose)
