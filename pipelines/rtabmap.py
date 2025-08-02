@@ -147,35 +147,34 @@ class RTABMap(Pipeline):
             # Run pipeline
             p.start()
             logging.info("RTAPMap VIO initialised")
-            while p.isRunning():
-                while not self.stop_event.is_set():
-                    if not pose_queue.has():
-                        time.sleep(WAIT_TIME)
-                        continue
-
-                    imgFrame = passthrough_queue.get()
-                    transform_message = pose_queue.get()
-                    temp_point = transform_message.getTranslation()
-                    temp_quaternion = transform_message.getQuaternion()
-
-                    pose = Pose3d(
-                        Translation3d(temp_point.x, temp_point.y, temp_point.z),
-                        Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
-                    )
-
-                    self.status_publisher.set(True)
-                    self.pose_publisher.set(pose)
-                    logging.debug(str(pose))
-
-                    frame = imgFrame.getCvFrame()
-
-                    with variables.video_lock:
-                        variables.video_frame = frame.copy()
-
+            while p.isRunning() and not self.stop_event.is_set():
+                if not pose_queue.has():
                     time.sleep(WAIT_TIME)
+                    continue
 
-                p.stop()
-                logging.info("RTABMap VIO stopped")
+                imgFrame = passthrough_queue.get()
+                transform_message = pose_queue.get()
+                temp_point = transform_message.getTranslation()
+                temp_quaternion = transform_message.getQuaternion()
+
+                pose = Pose3d(
+                    Translation3d(temp_point.x, temp_point.y, temp_point.z),
+                    Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
+                )
+
+                self.status_publisher.set(True)
+                self.pose_publisher.set(pose)
+                logging.debug(str(pose))
+
+                frame = imgFrame.getCvFrame()
+
+                with variables.video_lock:
+                    variables.video_frame = frame.copy()
+
+                time.sleep(WAIT_TIME)
+
+            p.stop()
+            logging.info("RTABMap VIO stopped")
 
 
     def start(self):

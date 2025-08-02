@@ -1,3 +1,5 @@
+import logging
+
 import ntcore
 
 class Pipeline:
@@ -11,20 +13,34 @@ class Pipeline:
         """
         return
 
+    def get_config_entries(self) -> list[ntcore.NetworkTableEntry]:
+        return []
+
+    def on_config_change(self, event: ntcore.Event):
+        """NT4 config change callback
+
+        Stops pipeline, updates config, and restarts pipeline
+
+        Args:
+            event (ntcore.Event): NT4 event
+        """
+
+        logging.info("Config changed!")
+        self.stop()
+        self._update_config(self.config, event)
+        self.start()
+
     def exit(self):
         """Exit pipeline
         """
         return
 
-    def _update_config(self, config: dict, event: ntcore.Event) -> dict:
+    def _update_config(self, config: dict, event: ntcore.Event):
         """Update config for pipeline
 
         Args:
             config (dict): config
             event (ntcore.Event): NT update event
-
-        Returns:
-            dict: Updated config
         """
 
         data_type = event.data.topic.getType()
@@ -55,6 +71,4 @@ class Pipeline:
                 config[topic_name] = event.data.value.getStringArray()
             case _:
                 logging.exception("Unsupported config data type!")
-
-        return config
 

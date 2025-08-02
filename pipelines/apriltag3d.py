@@ -41,66 +41,78 @@ class AprilTag3D(Pipeline):
         with depthai.Pipeline() as p:
             device = p.getDefaultDevice()
             calib = device.readCalibration()
+
             frame_width = 1280
             frame_height = 800
+
             if "OAK-D-LITE" in device.getDeviceName():
                 frame_width = 640
                 frame_height = 480
-            left: depthai.node.Camera = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B)
+
+            left_camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height))
+            left_dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B))
+            right_camera_matrix = np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_C, frame_width, frame_height))
+            right_dist_coeffs = np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_C))
+
+            # Create nodes
+            left = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_B)
             right = p.create(depthai.node.Camera).build(depthai.CameraBoardSocket.CAM_C)
-            left_apriltag_node = p.create(depthai.node.AprilTag)
-            right_apriltag_node = p.create(depthai.node.AprilTag)
-            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.BGR888p).link(left_apriltag_node.inputImage)
-            right.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.BGR888p).link(right_apriltag_node.inputImage)
-            passthrough_output_queue = left_apriltag_node.passthroughInputImage.createOutputQueue()
-            left_output_queue = left_apriltag_node.out.createOutputQueue()
-            right_output_queue = right_apriltag_node.out.createOutputQueue()
+            left_apriltag = p.create(depthai.node.AprilTag)
+            right_apriltag = p.create(depthai.node.AprilTag)
+
+            # Link nodes
+            left.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(left_apriltag.inputImage)
+            right.requestOutput((frame_width, frame_height), depthai.ImgFrame.Type.GRAY8).link(right_apriltag.inputImage)
+
+            # Create output queues
+            passthrough_output_queue = left_apriltag.passthroughInputImage.createOutputQueue()
+            left_output_queue = left_apriltag.out.createOutputQueue()
+            right_output_queue = right_apriltag.out.createOutputQueue()
 
             field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2025ReefscapeWelded)
 
             p.start()
             logging.info("AprilTag tracker initialised")
-            while p.isRunning():
-                while not self.stop_event.is_set():
-                    left_apriltag_message = left_output_queue.get()
-                    right_apriltag_message = right_output_queue.get()
+            while p.isRunning() and not self.stop_event.is_set():
+                left_apriltag_message = left_output_queue.get()
+                right_apriltag_message = right_output_queue.get()
 
-                    left_tags = left_apriltag_message.aprilTags
-                    right_tags = right_apriltag_message.aprilTags
+                left_tags = left_apriltag_message.aprilTags
+                right_tags = right_apriltag_message.aprilTags
 
-                    passthrough_image: depthai.ImgFrame = passthrough_output_queue.get()
-                    frame = passthrough_image.getCvFrame()
+                passthrough_image: depthai.ImgFrame = passthrough_output_queue.get()
+                frame = passthrough_image.getCvFrame()
 
-                    OpenCVHelp.drawTags(frame, left_tags, self.color)
+                OpenCVHelp.drawTags(frame, left_tags, self.color)
 
-                    left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(
-                        np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_B, frame_width, frame_height)),
-                        np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_B)),
-                        left_tags,
-                        field_layout,
-                        TargetModel.AprilTag36h11()
-                    )
+                left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(
+                    left_camera_matrix,
+                    left_dist_coeffs,
+                    left_tags,
+                    field_layout,
+                    TargetModel.AprilTag36h11()
+                )
 
-                    right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(
-                        np.array(calib.getCameraIntrinsics(depthai.CameraBoardSocket.CAM_C, frame_width, frame_height)),
-                        np.array(calib.getDistortionCoefficients(depthai.CameraBoardSocket.CAM_C)),
-                        right_tags,
-                        field_layout,
-                        TargetModel.AprilTag36h11()
-                    )
+                right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(
+                    right_camera_matrix,
+                    right_dist_coeffs,
+                    right_tags,
+                    field_layout,
+                    TargetModel.AprilTag36h11()
+                )
 
-                    pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, variables.baseline)
-                    self.status_publisher.set(pose is not None)
-                    if pose:
-                        self.pose_publisher.set(pose)
-                        logging.debug(str(pose))
+                pose = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, variables.baseline)
+                self.status_publisher.set(pose is not None)
+                if pose:
+                    self.pose_publisher.set(pose)
+                    logging.debug(str(pose))
 
-                    # Copy frame for output
-                    with variables.video_lock:
-                        variables.video_frame = frame.copy()
+                # Copy frame for output
+                with variables.video_lock:
+                    variables.video_frame = frame.copy()
 
-                p.stop()
-                logging.info("AprilTag tracker stopped")
+            p.stop()
+            logging.info("AprilTag tracker stopped")
 
 
     def start(self):
