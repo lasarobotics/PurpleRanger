@@ -48,7 +48,7 @@ class BasaltSimple(Pipeline):
         self.particle_quaternions[:, 0] = 1.0 # W,X,Y,Z for identity quaternion
 
         # Noise added during the prediction step to simulate VIO drift
-        self.motion_noise = [1e-2, 1e-2, 1e-2, 1e-4, 1e-4, 1e-4] # Trans(x,y,z), Rot(r,p,y)
+        self.motion_noise = [1e-3, 1e-3, 1e-3, 1e-4, 1e-4, 1e-4] # Trans(x,y,z), Rot(r,p,y)
 
         # VIO transform from the previous frame, needed to calculate delta
         self.last_basalt_transform = None
@@ -59,8 +59,8 @@ class BasaltSimple(Pipeline):
 
         logging.info("Initializing network table...")
         # Create NT4 output publishers
-        self.status_publisher = table.getBooleanTopic("Status").publish(ntcore.PubSubOptions(keepDuplicates=True, sendAll=True))
-        self.pose_publisher = table.getStructTopic("Pose", Pose3d).publish(ntcore.PubSubOptions(keepDuplicates=True, sendAll=True))
+        self.status_publisher = table.getBooleanTopic("Status").publish(ntcore.PubSubOptions(periodic=2, keepDuplicates=True, sendAll=True))
+        self.pose_publisher = table.getStructTopic("Pose", Pose3d).publish(ntcore.PubSubOptions(periodic=2, keepDuplicates=True, sendAll=True))
 
         # Create NT4 config entries
         topics = list(self.config.keys())
@@ -277,6 +277,11 @@ class BasaltSimple(Pipeline):
             imu = p.create(depthai.node.IMU)
             odom = p.create(depthai.node.BasaltVIO)
 
+            # Setup AprilTag
+            left_apriltag.initialConfig.decodeSharpening = 1.0
+            right_apriltag.initialConfig.decodeSharpening = 1.0
+
+            # Setup odometry
             odom.vioConfig.vio_max_kfs = 30
             odom.vioConfig.vio_max_iterations = 2
             odom.vioConfig.mapper_detection_num_points = 1600
