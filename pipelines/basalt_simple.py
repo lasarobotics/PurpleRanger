@@ -311,8 +311,8 @@ class BasaltSimple(Pipeline):
             while p.isRunning() and not self.stop_event.is_set():
                 nt_timestamp = ntcore._now()
 
-                # VIO measurement
-                if transform_queue.has():
+                if transform_queue.has() and left_tag_queue.has() and right_tag_queue.has():
+                    # VIO measurement
                     transform_message = transform_queue.get()
                     assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
                     temp_point = transform_message.getTranslation()
@@ -333,8 +333,7 @@ class BasaltSimple(Pipeline):
                     if self.field_pose_init:
                         self.__predict(delta_transform)
 
-                # AprilTag measurement
-                if left_tag_queue.has() and right_tag_queue.has():
+                    # AprilTag measurement
                     left_tag_message = left_tag_queue.get()
                     right_tag_message = right_tag_queue.get()
                     assert isinstance(left_tag_message, depthai.AprilTags), "Expected AprilTags"
