@@ -312,45 +312,43 @@ class BasaltSimple(Pipeline):
                 nt_timestamp = ntcore._now()
 
                 # VIO measurement
-                if transform_queue.has():
-                    transform_message = transform_queue.get()
-                    assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
-                    temp_point = transform_message.getTranslation()
-                    temp_quaternion = transform_message.getQuaternion()
-                    current_basalt_transform = Transform3d(
-                        Translation3d(temp_point.x, temp_point.y, temp_point.z),
-                        Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
-                    )
+                transform_message = transform_queue.get()
+                assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
+                temp_point = transform_message.getTranslation()
+                temp_quaternion = transform_message.getQuaternion()
+                current_basalt_transform = Transform3d(
+                    Translation3d(temp_point.x, temp_point.y, temp_point.z),
+                    Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
+                )
 
-                    if self.last_basalt_transform is None:
-                        self.last_basalt_transform = current_basalt_transform
-
-                    # Get delta since last loop
-                    delta_transform = self.last_basalt_transform.inverse() + current_basalt_transform
+                if self.last_basalt_transform is None:
                     self.last_basalt_transform = current_basalt_transform
 
-                    # Particle Filter: Predict Step
-                    if self.field_pose_init:
-                        self.__predict(delta_transform)
+                # Get delta since last loop
+                delta_transform = self.last_basalt_transform.inverse() + current_basalt_transform
+                self.last_basalt_transform = current_basalt_transform
+
+                # Particle Filter: Predict Step
+                if self.field_pose_init:
+                    self.__predict(delta_transform)
 
                 # AprilTag measurement
-                if left_tag_queue.has() and right_tag_queue.has():
-                    left_tag_message = left_tag_queue.get()
-                    right_tag_message = right_tag_queue.get()
-                    assert isinstance(left_tag_message, depthai.AprilTags), "Expected AprilTags"
-                    assert isinstance(right_tag_message, depthai.AprilTags), "Expected AprilTags"
-                    left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(left_camera_matrix, left_dist_coeffs, left_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
-                    right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(right_camera_matrix, right_dist_coeffs, right_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
-                    field_pose_estimate, measurement_noise_std = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, field_layout, Perspective.LEFT, variables.baseline)
+                left_tag_message = left_tag_queue.get()
+                right_tag_message = right_tag_queue.get()
+                assert isinstance(left_tag_message, depthai.AprilTags), "Expected AprilTags"
+                assert isinstance(right_tag_message, depthai.AprilTags), "Expected AprilTags"
+                left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(left_camera_matrix, left_dist_coeffs, left_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
+                right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(right_camera_matrix, right_dist_coeffs, right_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
+                field_pose_estimate, measurement_noise_std = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, field_layout, Perspective.LEFT, variables.baseline)
 
-                    # First measurement, initialize the filter
-                    if not self.field_pose_init and field_pose_estimate:
-                        self.__initialize_particles(field_pose_estimate)
+                # First measurement, initialize the filter
+                if not self.field_pose_init and field_pose_estimate:
+                    self.__initialize_particles(field_pose_estimate)
 
-                    # Particle Filter: Update and Resample Steps
-                    elif field_pose_estimate:
-                        self.__update(field_pose_estimate, measurement_noise_std)
-                        self.__resample()
+                # Particle Filter: Update and Resample Steps
+                elif field_pose_estimate:
+                    self.__update(field_pose_estimate, measurement_noise_std)
+                    self.__resample()
 
                 # Do nothing until we see a tag
                 if not self.field_pose_init:
