@@ -310,12 +310,6 @@ class BasaltSimple(Pipeline):
             logging.info("Config - " + str(self.config))
             while p.isRunning() and not self.stop_event.is_set():
                 nt_timestamp = ntcore._now()
-                left_tag_message = left_tag_queue.get()
-                right_tag_message = right_tag_queue.get()
-
-
-                assert isinstance(left_tag_message, depthai.AprilTags), "Expected AprilTags"
-                assert isinstance(right_tag_message, depthai.AprilTags), "Expected AprilTags"
 
                 # VIO measurement
                 if transform_queue.has():
@@ -341,6 +335,10 @@ class BasaltSimple(Pipeline):
 
                 # AprilTag measurement
                 if left_tag_queue.has() and right_tag_queue.has():
+                    left_tag_message = left_tag_queue.get()
+                    right_tag_message = right_tag_queue.get()
+                    assert isinstance(left_tag_message, depthai.AprilTags), "Expected AprilTags"
+                    assert isinstance(right_tag_message, depthai.AprilTags), "Expected AprilTags"
                     left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(left_camera_matrix, left_dist_coeffs, left_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
                     right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(right_camera_matrix, right_dist_coeffs, right_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
                     field_pose_estimate, measurement_noise_std = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, field_layout, Perspective.LEFT, variables.baseline)
