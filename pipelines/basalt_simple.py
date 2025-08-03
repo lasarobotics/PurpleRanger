@@ -277,8 +277,17 @@ class BasaltSimple(Pipeline):
             imu = p.create(depthai.node.IMU)
             odom = p.create(depthai.node.BasaltVIO)
 
+            odom.vioConfig.vio_max_kfs = 30
+            odom.vioConfig.vio_max_iterations = 2
+            odom.vioConfig.mapper_detection_num_points = 1600
+            odom.vioConfig.vio_fix_long_term_keyframes = True
+
             # Setup IMU
-            imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
+            if "OAK-D-LITE" in device.getDeviceName():
+                imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
+            else:
+                # Accelerometer will run at 512Hz, calibrated gyroscope will run at 100Hz
+                imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_CALIBRATED], 512)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
@@ -300,47 +309,50 @@ class BasaltSimple(Pipeline):
             logging.info("Basalt Simple initialised")
             logging.info("Config - " + str(self.config))
             while p.isRunning() and not self.stop_event.is_set():
-                image = image_queue.get()
-                transform_message = transform_queue.get()
+                nt_timestamp = ntcore._now()
                 left_tag_message = left_tag_queue.get()
                 right_tag_message = right_tag_queue.get()
-                assert isinstance(image, depthai.ImgFrame), "Expected ImgFrame"
-                assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
+
+
                 assert isinstance(left_tag_message, depthai.AprilTags), "Expected AprilTags"
                 assert isinstance(right_tag_message, depthai.AprilTags), "Expected AprilTags"
 
                 # VIO measurement
-                temp_point = transform_message.getTranslation()
-                temp_quaternion = transform_message.getQuaternion()
-                current_basalt_transform = Transform3d(
-                    Translation3d(temp_point.x, temp_point.y, temp_point.z),
-                    Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
-                )
+                if transform_queue.has():
+                    transform_message = transform_queue.get()
+                    assert isinstance(transform_message, depthai.TransformData), "Expected TransformData"
+                    temp_point = transform_message.getTranslation()
+                    temp_quaternion = transform_message.getQuaternion()
+                    current_basalt_transform = Transform3d(
+                        Translation3d(temp_point.x, temp_point.y, temp_point.z),
+                        Rotation3d(Quaternion(temp_quaternion.qw, temp_quaternion.qx, temp_quaternion.qy, temp_quaternion.qz))
+                    )
 
-                if self.last_basalt_transform is None:
+                    if self.last_basalt_transform is None:
+                        self.last_basalt_transform = current_basalt_transform
+
+                    # Get delta since last loop
+                    delta_transform = self.last_basalt_transform.inverse() + current_basalt_transform
                     self.last_basalt_transform = current_basalt_transform
 
-                # Get delta since last loop
-                delta_transform = self.last_basalt_transform.inverse() + current_basalt_transform
-                self.last_basalt_transform = current_basalt_transform
-
-                # Particle Filter: Predict Step
-                if self.field_pose_init:
-                    self.__predict(delta_transform)
+                    # Particle Filter: Predict Step
+                    if self.field_pose_init:
+                        self.__predict(delta_transform)
 
                 # AprilTag measurement
-                left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(left_camera_matrix, left_dist_coeffs, left_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
-                right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(right_camera_matrix, right_dist_coeffs, right_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
-                field_pose_estimate, measurement_noise_std = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, field_layout, Perspective.LEFT, variables.baseline)
+                if left_tag_queue.has() and right_tag_queue.has():
+                    left_estimate = AprilTagPoseEstimation.estimateCamPosePNP(left_camera_matrix, left_dist_coeffs, left_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
+                    right_estimate = AprilTagPoseEstimation.estimateCamPosePNP(right_camera_matrix, right_dist_coeffs, right_tag_message.aprilTags, field_layout, TargetModel.AprilTag36h11())
+                    field_pose_estimate, measurement_noise_std = AprilTagPoseEstimation.mergePoses(left_estimate, right_estimate, field_layout, Perspective.LEFT, variables.baseline)
 
-                # First measurement, initialize the filter
-                if not self.field_pose_init and field_pose_estimate:
-                    self.__initialize_particles(field_pose_estimate)
+                    # First measurement, initialize the filter
+                    if not self.field_pose_init and field_pose_estimate:
+                        self.__initialize_particles(field_pose_estimate)
 
-                # Particle Filter: Update and Resample Steps
-                elif field_pose_estimate:
-                    self.__update(field_pose_estimate, measurement_noise_std)
-                    self.__resample()
+                    # Particle Filter: Update and Resample Steps
+                    elif field_pose_estimate:
+                        self.__update(field_pose_estimate, measurement_noise_std)
+                        self.__resample()
 
                 # Do nothing until we see a tag
                 if not self.field_pose_init:
@@ -354,20 +366,23 @@ class BasaltSimple(Pipeline):
                     if field_pose_estimate and AprilTagPoseEstimation.isPoseValid(field_pose_estimate, field_layout):
                         logging.warn("Attempting to recover using AprilTag pose estimate...")
                         self.__initialize_particles(field_pose_estimate)
-                        final_pose = self.__estimate_pose()
+                        continue
                     else:
                         logging.error("Unable to reinitialize particle filter, killing!")
                         self.kill()
 
-                self.status_publisher.set(True)
-                self.pose_publisher.set(final_pose)
+                self.status_publisher.set(True, nt_timestamp)
+                self.pose_publisher.set(final_pose, nt_timestamp)
                 logging.debug(final_pose)
 
                 # Copy video frame for output
-                frame = image.getCvFrame()
-                OpenCVHelp.drawTags(frame, left_tag_message.aprilTags, (0, 0, 0))
-                with variables.video_lock:
-                    variables.video_frame = frame.copy()
+                if image_queue.has():
+                    image = image_queue.get()
+                    assert isinstance(image, depthai.ImgFrame), "Expected ImgFrame"
+                    frame = image.getCvFrame()
+                    OpenCVHelp.drawTags(frame, left_tag_message.aprilTags, (0, 0, 0))
+                    with variables.video_lock:
+                        variables.video_frame = frame.copy()
 
             p.stop()
             logging.info("Basalt Simple stopped")
