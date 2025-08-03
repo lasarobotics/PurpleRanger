@@ -128,6 +128,9 @@ if __name__ ==  "__main__":
             nt_instance.setServer("localhost")
             logging.info("Simulation mode, connecting to localhost NT4 server...")
         case _:
+            if not args.team:
+                logging.error("Team number must be specified in robot mode!")
+                sys.exit()
             nt_instance.setServerTeam(args.team)
             logging.info("Robot mode, connecting to robot NT4 server...")
 
