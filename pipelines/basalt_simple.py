@@ -292,7 +292,7 @@ class BasaltSimple(Pipeline):
                 imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
             else:
                 # Accelerometer will run at 512Hz, calibrated gyroscope will run at 100Hz
-                imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_CALIBRATED], 512)
+                imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_CALIBRATED], 100)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
