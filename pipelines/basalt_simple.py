@@ -279,25 +279,13 @@ class BasaltSimple(Pipeline):
             right_apriltag.initialConfig.decodeSharpening = 1.0
 
             # Setup odometry
-            odom.vioConfig.vio_max_kfs = 4
-            odom.vioConfig.vio_min_frames_after_kf = 2
-            odom.vioConfig.vio_new_kf_keypoints_thresh = 0.6
+            odom.vioConfig.vio_enforce_realtime = True
+            odom.vioConfig.vio_obs_std_dev = 2.0
+            odom.vioConfig.vio_max_kfs = 5
             odom.vioConfig.vio_max_iterations = 3
             odom.vioConfig.optical_flow_detection_grid_size = 200
-            odom.vioConfig.optical_flow_detection_min_threshold = 4
-            odom.vioConfig.mapper_obs_huber_thresh = 0.9
-            odom.vioConfig.mapper_detection_num_points = 600
-            odom.vioConfig.mapper_num_frames_to_match = 15
-            #odom.vioConfig.mapper_max_hamming_distance = 70
-            odom.vioConfig.mapper_second_best_test_ratio = 1.2
-            odom.vioConfig.mapper_ransac_threshold = 5e-5
-            odom.vioConfig.mapper_min_track_length = 7
-            odom.vioConfig.mapper_min_matches = 20
-            odom.vioConfig.vio_min_triangulation_dist = 0.05
-            #odom.vioConfig.mapper_min_triangulation_dist = 0.1
-            #odom.vioConfig.mapper_bow_num_bits = 8
-            #odom.vioConfig.mapper_use_lm = False
-            odom.vioConfig.vio_fix_long_term_keyframes = True
+            odom.vioConfig.mapper_detection_num_points = 800
+            odom.vioConfig.mapper_obs_std_dev = 0.5
 
             # Setup IMU
             if "OAK-D-LITE" in device.getDeviceName():
@@ -419,4 +407,5 @@ class BasaltSimple(Pipeline):
 
 
     def exit(self):
+        self.status_publisher.set(False)
         self.stop()
