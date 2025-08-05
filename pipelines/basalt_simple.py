@@ -280,19 +280,20 @@ class BasaltSimple(Pipeline):
 
             # Setup odometry
             odom.vioConfig.vio_enforce_realtime = True
-            odom.vioConfig.vio_obs_std_dev = 2.0
-            odom.vioConfig.vio_max_kfs = 5
-            odom.vioConfig.vio_max_iterations = 3
-            odom.vioConfig.optical_flow_detection_grid_size = 200
-            odom.vioConfig.mapper_detection_num_points = 800
-            odom.vioConfig.mapper_obs_std_dev = 0.5
+            odom.vioConfig.vio_max_kfs = 4
+            odom.vioConfig.vio_min_frames_after_kf = 3
+            odom.vioConfig.vio_max_iterations = 7
+            odom.vioConfig.vio_obs_std_dev = 0.125
+            odom.vioConfig.optical_flow_detection_grid_size = 400
+            odom.vioConfig.optical_flow_detection_min_threshold = 4
+            odom.vioConfig.mapper_obs_huber_thresh = 0.7
+            odom.vioConfig.mapper_detection_num_points = 400
+            odom.vioConfig.mapper_obs_std_dev = 0.0625
+            odom.vioConfig.mapper_use_lm = True
+            odom.vioConfig.vio_fix_long_term_keyframes = True
 
             # Setup IMU
-            if "OAK-D-LITE" in device.getDeviceName():
-                imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
-            else:
-                # Accelerometer will run at 512Hz, calibrated gyroscope will run at 100Hz
-                imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER, depthai.IMUSensor.GYROSCOPE_CALIBRATED], 100)
+            imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 250)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
