@@ -257,6 +257,7 @@ class BasaltSimple(Pipeline):
             frame_height = 800
 
             if "OAK-D-LITE" in device.getDeviceName():
+                fps = 90
                 frame_width = 640
                 frame_height = 480
 
