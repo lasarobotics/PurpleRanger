@@ -252,9 +252,9 @@ class BasaltSimple(Pipeline):
                 device.setIrLaserDotProjectorIntensity(self.config["DotProjectorIntensity"])
                 device.setIrFloodLightIntensity(self.config["IRFloodlightIntensity"])
 
-            fps = 120
-            frame_width = 1280
-            frame_height = 800
+            fps = 30
+            frame_width = 640
+            frame_height = 480
 
             if "OAK-D-LITE" in device.getDeviceName():
                 fps = 90
@@ -280,21 +280,14 @@ class BasaltSimple(Pipeline):
             right_apriltag.initialConfig.decodeSharpening = 1.0
 
             # Setup odometry
-            odom.vioConfig.vio_enforce_realtime = True
-            odom.vioConfig.vio_max_kfs = 4
-            odom.vioConfig.vio_min_frames_after_kf = 3
-            odom.vioConfig.vio_max_iterations = 7
-            odom.vioConfig.vio_obs_std_dev = 0.125
-            odom.vioConfig.optical_flow_detection_grid_size = 400
-            odom.vioConfig.optical_flow_detection_min_threshold = 4
-            odom.vioConfig.mapper_obs_huber_thresh = 0.7
-            odom.vioConfig.mapper_detection_num_points = 400
-            odom.vioConfig.mapper_obs_std_dev = 0.0625
-            odom.vioConfig.mapper_use_lm = True
-            odom.vioConfig.vio_fix_long_term_keyframes = True
+            odom.vioConfig.optical_flow_detection_grid_size = 40
+            odom.vioConfig.optical_flow_detection_min_threshold = 20
 
             # Setup IMU
-            imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 250)
+            if "OAK-D-LITE" in device.getDeviceName():
+                imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 200)
+            else:
+                imu.enableIMUSensor([depthai.IMUSensor.ACCELEROMETER_RAW, depthai.IMUSensor.GYROSCOPE_RAW], 400)
             imu.setBatchReportThreshold(1)
             imu.setMaxBatchReports(10)
 
