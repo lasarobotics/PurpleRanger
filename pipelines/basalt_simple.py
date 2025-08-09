@@ -282,6 +282,8 @@ class BasaltSimple(Pipeline):
             # Setup odometry
             odom.vioConfig.optical_flow_detection_grid_size = 40
             odom.vioConfig.optical_flow_detection_min_threshold = 20
+            odom.vioConfig.vio_use_lm = True
+            odom.vioConfig.vio_scale_jacobian = True
 
             # Setup IMU
             if "OAK-D-LITE" in device.getDeviceName():
