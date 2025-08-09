@@ -59,8 +59,8 @@ class BasaltSimple(Pipeline):
 
         logging.info("Initializing network table...")
         # Create NT4 output publishers
-        self.status_publisher = table.getBooleanTopic("Status").publish(ntcore.PubSubOptions(periodic=2, keepDuplicates=True, sendAll=True))
-        self.pose_publisher = table.getStructTopic("Pose", Pose3d).publish(ntcore.PubSubOptions(periodic=2, keepDuplicates=True, sendAll=True))
+        self.status_publisher = table.getBooleanTopic("Status").publish(ntcore.PubSubOptions(keepDuplicates=True))
+        self.pose_publisher = table.getStructTopic("Pose", Pose3d).publish(ntcore.PubSubOptions(pollStorage=100))
 
         # Create NT4 config entries
         topics = list(self.config.keys())
