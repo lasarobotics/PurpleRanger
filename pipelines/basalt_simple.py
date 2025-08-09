@@ -246,7 +246,7 @@ class BasaltSimple(Pipeline):
                 device.setLogLevel(depthai.LogLevel.DEBUG)
                 device.setLogOutputLevel(depthai.LogLevel.DEBUG)
 
-            field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2025ReefscapeWelded)
+            field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2025ReefscapeAndyMark)
 
             if "OAK-D-PRO" in device.getDeviceName():
                 device.setIrLaserDotProjectorIntensity(self.config["DotProjectorIntensity"])
